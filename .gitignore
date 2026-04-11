@@ -1,0 +1,14 @@
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+android/.gradle/
+ios/Pods/
+.idea/
+.vscode/
+*.log
+token.txt
+*.accessToken
+*.iml
