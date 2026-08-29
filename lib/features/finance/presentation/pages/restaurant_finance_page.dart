@@ -836,15 +836,15 @@ class _FinanceStatsGrid extends StatelessWidget {
         value: '${data.summary.deliveredOrdersCount}',
       ),
       (
-        label: 'Оборот',
+        label: 'Сумма блюд',
         value: money(data.summary.grossTotal),
       ),
       (
-        label: 'Средний payout',
+        label: 'Среднее начисление',
         value: money(data.summary.averagePayoutPerOrder),
       ),
       (
-        label: 'Средний чек',
+        label: 'Средняя сумма блюд',
         value: money(data.summary.averageGrossOrderValue),
       ),
     ];
@@ -963,7 +963,7 @@ class _PayoutHistorySection extends StatelessWidget {
     if (rows.isEmpty) {
       return const _EmptyCard(
         title: 'Выплат пока нет',
-        subtitle: 'Когда админ создаст payout, он появится здесь',
+        subtitle: 'Когда администратор сформирует выплату, она появится здесь',
       );
     }
 
@@ -1024,7 +1024,7 @@ class _PayoutHistorySection extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Заказов: ${row.ordersCount} · Валовая сумма: ${money(row.grossSubtotal)}',
+                'Заказов: ${row.ordersCount} · Сумма блюд: ${money(row.grossSubtotal)}',
                 style: const TextStyle(
                   color: Color(0xFF94A3B8),
                   fontSize: 12,
@@ -1183,8 +1183,8 @@ class _RecentOrdersSection extends StatelessWidget {
                           const SizedBox(height: 4),
                           Text(
                             order.isAssignedToPayout
-                                ? 'Включён в payout'
-                                : 'Ожидает payout',
+                                ? 'Включён в выплату'
+                                : 'Ожидает выплаты',
                             style: TextStyle(
                               color: order.isAssignedToPayout
                                   ? const Color(0xFFFDE68A)
@@ -1213,33 +1213,25 @@ class _RecentOrdersSection extends StatelessWidget {
                     children: [
                       const Divider(color: Color(0xFF1F2937)),
                       _DetailRow(
-                        label: 'Подытог',
+                        label: 'Сумма блюд',
                         value: money(order.subtotal),
                       ),
                       _DetailRow(
-                        label: 'Доставка',
-                        value: money(order.deliveryFee),
-                      ),
-                      _DetailRow(
-                        label: 'Скидка',
+                        label: 'Скидка на блюда',
                         value: money(order.discountAmount),
                       ),
                       _DetailRow(
-                        label: 'Скидка на доставку',
-                        value: money(order.deliveryDiscountAmount),
-                      ),
-                      _DetailRow(
-                        label: 'Итого заказа',
-                        value: money(order.total),
-                      ),
-                      _DetailRow(
-                        label: 'Комиссия',
+                        label: 'Комиссия сервиса',
                         value: money(order.restaurantCommissionAmount),
                       ),
                       _DetailRow(
                         label: 'Ставка комиссии',
                         value:
                             '${order.restaurantCommissionPctApplied.toStringAsFixed(0)}%',
+                      ),
+                      _DetailRow(
+                        label: 'Начислено ресторану',
+                        value: money(order.restaurantPayoutAmount),
                       ),
                       const SizedBox(height: 10),
                       const Align(
@@ -1378,7 +1370,7 @@ class _FinanceSummarySection extends StatelessWidget {
             value: '${data.summary.deliveredOrdersCount}',
           ),
           _DetailRow(
-            label: 'Оборот',
+            label: 'Сумма блюд',
             value: money(data.summary.grossTotal),
           ),
           _DetailRow(
@@ -1398,7 +1390,7 @@ class _FinanceSummarySection extends StatelessWidget {
             value: money(data.paidAmount),
           ),
           _DetailRow(
-            label: 'Назначено в payout',
+            label: 'Назначено к выплате',
             value: money(data.assignedButUnpaidAmount),
           ),
         ],
