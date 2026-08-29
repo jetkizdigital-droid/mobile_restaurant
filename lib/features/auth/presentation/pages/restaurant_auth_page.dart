@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
+
 import 'restaurant_sms_page.dart';
 
 enum RestaurantAuthTab { login, register }
+
+enum RestaurantAuthLanguage { ru, kk }
 
 class RestaurantAuthPage extends StatefulWidget {
   const RestaurantAuthPage({super.key});
@@ -15,6 +18,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
   final AuthApi _authApi = AuthApi();
 
   RestaurantAuthTab _tab = RestaurantAuthTab.login;
+  RestaurantAuthLanguage _language = RestaurantAuthLanguage.ru;
   bool _isLoading = false;
 
   final TextEditingController _loginPhoneController = TextEditingController();
@@ -26,6 +30,12 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
 
   TimeOfDay _openTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _closeTime = const TimeOfDay(hour: 22, minute: 0);
+
+  bool get _isKazakh => _language == RestaurantAuthLanguage.kk;
+
+  String _t(String ru, String kk) => _isKazakh ? kk : ru;
+
+  String get _languageCode => _isKazakh ? 'kk' : 'ru';
 
   @override
   void dispose() {
@@ -126,6 +136,9 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
+      helpText: _t('Выберите время', 'Уақытты таңдаңыз'),
+      cancelText: _t('Отмена', 'Бас тарту'),
+      confirmText: _t('Готово', 'Дайын'),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -156,7 +169,12 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     final phone = _loginPhoneController.text.trim();
 
     if (!_isValidPhone(phone)) {
-      _showError('Enter a valid phone number');
+      _showError(
+        _t(
+          'Введите корректный номер телефона',
+          'Телефон нөмірін дұрыс енгізіңіз',
+        ),
+      );
       return;
     }
 
@@ -170,7 +188,11 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '').trim();
-        _showError(message.isEmpty ? 'Не удалось отправить SMS-код' : message);
+        _showError(
+          message.isEmpty
+              ? _t('Не удалось отправить SMS-код', 'SMS-код жіберілмеді')
+              : message,
+        );
         return;
       }
 
@@ -182,6 +204,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
             phone: normalizedPhone,
             isNewUser: false,
             registerData: null,
+            languageCode: _languageCode,
           ),
         ),
       );
@@ -201,12 +224,22 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     final workingHoursTo = _formatTime(_closeTime);
 
     if (!_isValidPhone(phone)) {
-      _showError('Enter a valid phone number');
+      _showError(
+        _t(
+          'Введите корректный номер телефона',
+          'Телефон нөмірін дұрыс енгізіңіз',
+        ),
+      );
       return;
     }
 
     if (nameRu.isEmpty || nameKk.isEmpty || address.isEmpty) {
-      _showError('Fill in all required fields');
+      _showError(
+        _t(
+          'Заполните все обязательные поля',
+          'Барлық міндетті өрістерді толтырыңыз',
+        ),
+      );
       return;
     }
 
@@ -220,7 +253,11 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '').trim();
-        _showError(message.isEmpty ? 'Не удалось отправить SMS-код' : message);
+        _showError(
+          message.isEmpty
+              ? _t('Не удалось отправить SMS-код', 'SMS-код жіберілмеді')
+              : message,
+        );
         return;
       }
 
@@ -231,6 +268,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
           builder: (_) => RestaurantSmsPage(
             phone: normalizedPhone,
             isNewUser: true,
+            languageCode: _languageCode,
             registerData: {
               'nameRu': nameRu,
               'nameKk': nameKk,
@@ -249,12 +287,14 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: const Color(0xFFB3261E),
-        content: Text(message),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFB3261E),
+          content: Text(message),
+        ),
+      );
   }
 
   @override
@@ -283,6 +323,16 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: Column(
                   children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _LanguageSwitcher(
+                        language: _language,
+                        onChanged: (language) {
+                          if (_language == language) return;
+                          setState(() => _language = language);
+                        },
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Container(
                       width: 62,
@@ -312,9 +362,12 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      'Restaurant account access',
-                      style: TextStyle(color: textMuted, fontSize: 13),
+                    Text(
+                      _t(
+                        'Доступ к кабинету ресторана',
+                        'Мейрамхана кабинетіне кіру',
+                      ),
+                      style: const TextStyle(color: textMuted, fontSize: 13),
                     ),
                     const SizedBox(height: 24),
                     Container(
@@ -328,7 +381,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                         children: [
                           Expanded(
                             child: _AuthTabButton(
-                              title: 'Login',
+                              title: _t('Вход', 'Кіру'),
                               isActive: _tab == RestaurantAuthTab.login,
                               onTap: () {
                                 setState(() {
@@ -340,7 +393,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: _AuthTabButton(
-                              title: 'Register',
+                              title: _t('Регистрация', 'Тіркелу'),
                               isActive: _tab == RestaurantAuthTab.register,
                               onTap: () {
                                 setState(() {
@@ -390,21 +443,21 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       key: const ValueKey('login_form'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Welcome back',
-          style: TextStyle(
+        Text(
+          _t('С возвращением', 'Қайта қош келдіңіз'),
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Enter your phone number',
-          style: TextStyle(color: Color(0xFF95A0B3), fontSize: 13),
+        Text(
+          _t('Введите номер телефона', 'Телефон нөмірін енгізіңіз'),
+          style: const TextStyle(color: Color(0xFF95A0B3), fontSize: 13),
         ),
         const SizedBox(height: 22),
-        const _FieldLabel('Phone number'),
+        _FieldLabel(_t('Телефон', 'Телефон')),
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _loginPhoneController,
@@ -415,7 +468,9 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         ),
         const SizedBox(height: 18),
         _GreenButton(
-          text: _isLoading ? 'Sending...' : 'Send code',
+          text: _isLoading
+              ? _t('Отправка...', 'Жіберілуде...')
+              : _t('Получить код', 'Код алу'),
           onPressed: _isLoading ? null : _submitLogin,
         ),
       ],
@@ -427,21 +482,24 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       key: const ValueKey('register_form'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Register restaurant',
-          style: TextStyle(
+        Text(
+          _t('Регистрация ресторана', 'Мейрамхананы тіркеу'),
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Fill in restaurant data',
-          style: TextStyle(color: Color(0xFF95A0B3), fontSize: 13),
+        Text(
+          _t(
+            'Заполните данные ресторана',
+            'Мейрамхана деректерін толтырыңыз',
+          ),
+          style: const TextStyle(color: Color(0xFF95A0B3), fontSize: 13),
         ),
         const SizedBox(height: 18),
-        const _FieldLabel('Phone number'),
+        _FieldLabel(_t('Телефон', 'Телефон')),
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _registerPhoneController,
@@ -452,45 +510,37 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
               _onPhoneChanged(_registerPhoneController, value),
         ),
         const SizedBox(height: 14),
-        Row(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _FieldLabel('Restaurant name (RU)'),
-                  const SizedBox(height: 8),
-                  _DarkTextField(
-                    controller: _nameRuController,
-                    hintText: 'Restaurant name',
-                    prefixIcon: Icons.storefront_outlined,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _FieldLabel('Restaurant name (KK)'),
-                  const SizedBox(height: 8),
-                  _DarkTextField(
-                    controller: _nameKkController,
-                    hintText: 'Restaurant name',
-                    prefixIcon: Icons.storefront_outlined,
-                  ),
-                ],
-              ),
+            _FieldLabel(_t('Название на русском', 'Орысша атауы')),
+            const SizedBox(height: 8),
+            _DarkTextField(
+              controller: _nameRuController,
+              hintText: _t('Название ресторана', 'Мейрамхана атауы'),
+              prefixIcon: Icons.storefront_outlined,
             ),
           ],
         ),
         const SizedBox(height: 14),
-        const _FieldLabel('Address'),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _FieldLabel(_t('Название на казахском', 'Қазақша атауы')),
+            const SizedBox(height: 8),
+            _DarkTextField(
+              controller: _nameKkController,
+              hintText: _t('Название ресторана', 'Мейрамхана атауы'),
+              prefixIcon: Icons.storefront_outlined,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _FieldLabel(_t('Адрес', 'Мекенжай')),
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _addressController,
-          hintText: 'City, street, building',
+          hintText: _t('Город, улица, дом', 'Қала, көше, үй'),
           prefixIcon: Icons.location_on_outlined,
         ),
         const SizedBox(height: 14),
@@ -500,7 +550,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _FieldLabel('Open time'),
+                  _FieldLabel(_t('Открытие', 'Ашылуы')),
                   const SizedBox(height: 8),
                   _TimeField(
                     text: _formatTime(_openTime),
@@ -514,7 +564,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _FieldLabel('Close time'),
+                  _FieldLabel(_t('Закрытие', 'Жабылуы')),
                   const SizedBox(height: 8),
                   _TimeField(
                     text: _formatTime(_closeTime),
@@ -527,10 +577,86 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         ),
         const SizedBox(height: 20),
         _GreenButton(
-          text: _isLoading ? 'Sending...' : 'Continue',
+          text: _isLoading
+              ? _t('Отправка...', 'Жіберілуде...')
+              : _t('Продолжить', 'Жалғастыру'),
           onPressed: _isLoading ? null : _submitRegister,
         ),
       ],
+    );
+  }
+}
+
+class _LanguageSwitcher extends StatelessWidget {
+  const _LanguageSwitcher({
+    required this.language,
+    required this.onChanged,
+  });
+
+  final RestaurantAuthLanguage language;
+  final ValueChanged<RestaurantAuthLanguage> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF121B2C),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF22324A)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LanguageButton(
+            label: 'RU',
+            selected: language == RestaurantAuthLanguage.ru,
+            onTap: () => onChanged(RestaurantAuthLanguage.ru),
+          ),
+          const SizedBox(width: 4),
+          _LanguageButton(
+            label: 'ҚАЗ',
+            selected: language == RestaurantAuthLanguage.kk,
+            onTap: () => onChanged(RestaurantAuthLanguage.kk),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageButton extends StatelessWidget {
+  const _LanguageButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF489F2A) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : const Color(0xFF95A0B3),
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
     );
   }
 }
