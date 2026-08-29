@@ -164,6 +164,8 @@ class RestaurantPushNotificationService {
   void markNavigationUnavailable() {
     _navigationGeneration++;
     _navigationReady = false;
+    _navigationFlushScheduled = false;
+    _pendingOpenPayloads.clear();
   }
 
   Future<void> _requestPermission() async {
