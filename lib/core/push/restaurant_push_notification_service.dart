@@ -144,8 +144,11 @@ class RestaurantPushNotificationService {
     final token = await getToken();
     if (token == null || token.trim().isEmpty) return;
 
+    final deviceId = await _getOrCreateDeviceId();
+
     await _apiClient.post('/notification-devices/unregister', <String, dynamic>{
       'token': token.trim(),
+      'deviceId': deviceId,
     });
   }
 
@@ -304,6 +307,7 @@ class RestaurantPushNotificationService {
       return;
     }
 
+    final restaurantId = _readString(message.data['restaurantId']);
     final title =
         _readString(message.notification?.title) ??
         _readString(message.data['title']) ??
@@ -346,6 +350,7 @@ class RestaurantPushNotificationService {
       payload: jsonEncode(<String, String>{
         'type': restaurantNewOrderType,
         'orderId': orderId,
+        if (restaurantId != null) 'restaurantId': restaurantId,
         if (_readString(message.data['orderNumber']) != null)
           'orderNumber': _readString(message.data['orderNumber'])!,
         if (_readString(message.data['notificationId']) != null)
@@ -368,17 +373,21 @@ class RestaurantPushNotificationService {
       return;
     }
 
+    final restaurantId = _readString(message.data['restaurantId']);
+
     _ordersRefreshController.add(null);
 
     await _trackNotificationOpen(
       source: source,
       notificationId: _readString(message.data['notificationId']),
       orderId: orderId,
+      restaurantId: restaurantId,
     );
 
     _queueOpenPayload(<String, String>{
       'type': restaurantNewOrderType,
       'orderId': orderId,
+      if (restaurantId != null) 'restaurantId': restaurantId,
     });
   }
 
@@ -411,15 +420,19 @@ class RestaurantPushNotificationService {
         return;
       }
 
+      final restaurantId = _readString(data['restaurantId']);
+
       await _trackNotificationOpen(
         source: source,
         notificationId: _readString(data['notificationId']),
         orderId: orderId,
+        restaurantId: restaurantId,
       );
 
       _queueOpenPayload(<String, String>{
         'type': restaurantNewOrderType,
         'orderId': orderId,
+        if (restaurantId != null) 'restaurantId': restaurantId,
       });
     } catch (error) {
       if (kDebugMode) {
@@ -454,8 +467,8 @@ class RestaurantPushNotificationService {
     if (!_navigationReady) return;
 
     final hasSession = await _authStorage.hasSession();
-    final restaurantId = await _authStorage.getSelectedRestaurantId();
-    if (!hasSession || restaurantId == null) {
+    final selectedRestaurantId = await _authStorage.getSelectedRestaurantId();
+    if (!hasSession || selectedRestaurantId == null) {
       _navigationReady = false;
       return;
     }
@@ -473,6 +486,12 @@ class RestaurantPushNotificationService {
       return;
     }
 
+    final payloadRestaurantId = _readString(payload['restaurantId']);
+    if (payloadRestaurantId != null &&
+        payloadRestaurantId != selectedRestaurantId) {
+      await _apiClient.setSelectedRestaurantId(payloadRestaurantId);
+    }
+
     navigator.push(
       MaterialPageRoute(
         builder: (_) => RestaurantOrderDetailsPage(orderId: orderId),
@@ -488,6 +507,7 @@ class RestaurantPushNotificationService {
     required String source,
     required String orderId,
     String? notificationId,
+    String? restaurantId,
   }) async {
     try {
       final accessToken = await _authStorage.getAccessToken();
@@ -503,6 +523,8 @@ class RestaurantPushNotificationService {
         'metadata': {
           'source': source,
           'app': 'RESTAURANT',
+          if (restaurantId != null && restaurantId.isNotEmpty)
+            'restaurantId': restaurantId,
           if (notificationId != null && notificationId.isNotEmpty)
             'notificationId': notificationId,
         },
