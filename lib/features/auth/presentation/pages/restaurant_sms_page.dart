@@ -21,12 +21,14 @@ class RestaurantSmsPage extends StatefulWidget {
   final String phone;
   final bool isNewUser;
   final Map<String, dynamic>? registerData;
+  final String languageCode;
 
   const RestaurantSmsPage({
     super.key,
     required this.phone,
     required this.isNewUser,
     this.registerData,
+    this.languageCode = 'ru',
   });
 
   @override
@@ -40,6 +42,10 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
   bool _isLoading = false;
   bool _isResending = false;
 
+  bool get _isKazakh => widget.languageCode.trim().toLowerCase() == 'kk';
+
+  String _t(String ru, String kk) => _isKazakh ? kk : ru;
+
   @override
   void dispose() {
     _codeController.dispose();
@@ -50,7 +56,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
     final code = _codeController.text.trim();
 
     if (code.isEmpty) {
-      _showError('Введите код');
+      _showError(_t('Введите код', 'Кодты енгізіңіз'));
       return;
     }
 
@@ -88,7 +94,12 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
       final restaurantId = resolveRestaurantIdFromMe(me)?.trim();
 
       if (restaurantId == null || restaurantId.isEmpty) {
-        _showError('У аккаунта не найден ресторан');
+        _showError(
+          _t(
+            'У аккаунта не найден ресторан',
+            'Аккаунтқа тіркелген мейрамхана табылмады',
+          ),
+        );
         return;
       }
 
@@ -125,8 +136,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
         debugPrintStack(stackTrace: stackTrace);
       }
 
-      // Do not block login. Push registration can be retried on next app start
-      // or token refresh. The restaurant must still enter the app.
+      // Push registration must not block successful authentication.
     }
   }
 
@@ -143,8 +153,10 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Код отправлен повторно'),
+        SnackBar(
+          content: Text(
+            _t('Код отправлен повторно', 'Код қайта жіберілді'),
+          ),
         ),
       );
     } catch (error, stackTrace) {
@@ -165,7 +177,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
     final message = error.toString().replaceFirst('Exception: ', '').trim();
 
     if (message.isEmpty) {
-      return 'Произошла ошибка';
+      return _t('Произошла ошибка', 'Қате орын алды');
     }
 
     return message;
@@ -180,7 +192,9 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
         SnackBar(
           backgroundColor: const Color(0xFFB3261E),
           content: Text(
-            message.trim().isEmpty ? 'Произошла ошибка' : message.trim(),
+            message.trim().isEmpty
+                ? _t('Произошла ошибка', 'Қате орын алды')
+                : message.trim(),
           ),
         ),
       );
@@ -245,9 +259,9 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Подтверждение',
-                        style: TextStyle(
+                      Text(
+                        _t('Подтверждение', 'Растау'),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
@@ -255,7 +269,10 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Введите код из SMS, отправленный на номер ${widget.phone}',
+                        _t(
+                          'Введите код из SMS, отправленный на номер ${widget.phone}',
+                          '${widget.phone} нөміріне SMS арқылы жіберілген кодты енгізіңіз',
+                        ),
                         style: const TextStyle(
                           color: textMuted,
                           fontSize: 13,
@@ -263,11 +280,11 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const _FieldLabel('Код подтверждения'),
+                      _FieldLabel(_t('Код подтверждения', 'Растау коды')),
                       const SizedBox(height: 8),
                       _DarkTextField(
                         controller: _codeController,
-                        hintText: 'Введите код',
+                        hintText: _t('Введите код', 'Кодты енгізіңіз'),
                         prefixIcon: Icons.sms_outlined,
                         keyboardType: TextInputType.number,
                         enabled: !_isLoading,
@@ -279,7 +296,9 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                       ),
                       const SizedBox(height: 18),
                       _GreenButton(
-                        text: _isLoading ? 'Проверка...' : 'Подтвердить',
+                        text: _isLoading
+                            ? _t('Проверка...', 'Тексерілуде...')
+                            : _t('Подтвердить', 'Растау'),
                         onPressed: _isLoading ? null : _verifyCode,
                       ),
                       const SizedBox(height: 14),
@@ -298,8 +317,11 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                           ),
                           child: Text(
                             _isResending
-                                ? 'Отправка...'
-                                : 'Отправить код повторно',
+                                ? _t('Отправка...', 'Жіберілуде...')
+                                : _t(
+                                    'Отправить код повторно',
+                                    'Кодты қайта жіберу',
+                                  ),
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -308,9 +330,12 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      const Text(
-                        'Если код не пришёл, попробуйте запросить его ещё раз.',
-                        style: TextStyle(
+                      Text(
+                        _t(
+                          'Если код не пришёл, запросите его ещё раз.',
+                          'Код келмесе, оны қайта сұратыңыз.',
+                        ),
+                        style: const TextStyle(
                           color: textMuted,
                           fontSize: 12,
                           height: 1.45,
