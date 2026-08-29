@@ -36,10 +36,8 @@ class RestaurantApi {
   }
 
   Future<RestaurantProfileData> uploadRestaurantCover(File file) async {
-    final currentProfile = await getMyRestaurant();
-
     await _client.uploadFile(
-      '/restaurants/${currentProfile.id}/cover',
+      '/restaurants/me/cover',
       file: file,
       fieldName: 'file',
     );

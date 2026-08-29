@@ -9,25 +9,12 @@ import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 // - Regular login is completed through: POST /auth/verify-code
 // - Restaurant registration is completed through: POST /restaurant-auth/register
 //
-// WHY THIS FILE EXISTS:
-// - UI screens must NOT call ApiClient directly
-// - all auth/registration HTTP logic stays here
-// - if backend contract changes, update this file first
-//
-// CURRENT REGISTRATION PAYLOAD EXPECTED BY BACKEND:
-// - phone
-// - code
-// - nameRu
-// - nameKk
-// - address
-// - workingHoursFrom
-// - workingHoursTo
-//
-// FUTURE GPT / DEV NOTE:
-// If restaurant registration stops working:
-// 1. check /auth/request-code
-// 2. check /restaurant-auth/register
-// 3. verify payload keys here before changing UI
+// MULTI-BRANCH:
+// - /auth/me returns restaurants / restaurantIds / restaurantId
+// - AuthApi selects saved restaurantId if it is still available
+// - otherwise selects backend default restaurantId
+// - otherwise selects the first available restaurant
+// - ApiClient then sends x-restaurant-id automatically
 class AuthApi {
   final ApiClient _client = ApiClient.instance;
   final AuthStorage _storage = AuthStorage();
@@ -59,15 +46,8 @@ class AuthApi {
       throw Exception('Некорректный формат ответа verify-code');
     }
 
-    final accessToken = response['accessToken']?.toString();
-    final refreshToken = response['refreshToken']?.toString();
-
-    if (accessToken != null &&
-        accessToken.isNotEmpty &&
-        refreshToken != null &&
-        refreshToken.isNotEmpty) {
-      await _storage.saveTokens(accessToken, refreshToken);
-    }
+    await _saveTokensFromResponse(response);
+    await _syncSelectedRestaurantFromAuthPayload(response);
 
     return response;
   }
@@ -99,6 +79,25 @@ class AuthApi {
       throw Exception('Некорректный формат ответа restaurant-auth/register');
     }
 
+    await _saveTokensFromResponse(response);
+    await _syncSelectedRestaurantFromAuthPayload(response);
+
+    return response;
+  }
+
+  Future<Map<String, dynamic>> getMe() async {
+    final response = await _client.get('/auth/me');
+
+    if (response is! Map<String, dynamic>) {
+      throw Exception('Некорректный формат ответа auth/me');
+    }
+
+    await _syncSelectedRestaurantFromAuthPayload(response);
+
+    return response;
+  }
+
+  Future<void> _saveTokensFromResponse(Map<String, dynamic> response) async {
     final accessToken = response['accessToken']?.toString();
     final refreshToken = response['refreshToken']?.toString();
 
@@ -108,17 +107,98 @@ class AuthApi {
         refreshToken.isNotEmpty) {
       await _storage.saveTokens(accessToken, refreshToken);
     }
-
-    return response;
   }
 
-  Future<Map<String, dynamic>> getMe() async {
-    final response = await _client.get('/auth/me');
+  Future<void> _syncSelectedRestaurantFromAuthPayload(
+    Map<String, dynamic> payload,
+  ) async {
+    final restaurantIds = _extractRestaurantIds(payload);
 
-    if (response is! Map<String, dynamic>) {
-      throw Exception('Некорректный формат ответа users/me');
+    if (restaurantIds.isEmpty) {
+      await _storage.clearSelectedRestaurantId();
+      _client.clearSelectedRestaurantId();
+      return;
     }
 
-    return response;
+    final savedRestaurantId = await _storage.getSelectedRestaurantId();
+
+    if (savedRestaurantId != null && restaurantIds.contains(savedRestaurantId)) {
+      _client.setSelectedRestaurantId(savedRestaurantId);
+      return;
+    }
+
+    final backendDefaultRestaurantId = _readString(payload['restaurantId']);
+
+    final selectedRestaurantId =
+        backendDefaultRestaurantId != null &&
+                restaurantIds.contains(backendDefaultRestaurantId)
+            ? backendDefaultRestaurantId
+            : restaurantIds.first;
+
+    await _storage.saveSelectedRestaurantId(selectedRestaurantId);
+    _client.setSelectedRestaurantId(selectedRestaurantId);
+  }
+
+  List<String> _extractRestaurantIds(Map<String, dynamic> payload) {
+    final ids = <String>{};
+
+    final restaurantId = _readString(payload['restaurantId']);
+    if (restaurantId != null) {
+      ids.add(restaurantId);
+    }
+
+    final restaurantIdsRaw = payload['restaurantIds'];
+    if (restaurantIdsRaw is List) {
+      for (final item in restaurantIdsRaw) {
+        final id = _readString(item);
+        if (id != null) {
+          ids.add(id);
+        }
+      }
+    }
+
+    final restaurantsRaw = payload['restaurants'];
+    if (restaurantsRaw is List) {
+      for (final item in restaurantsRaw) {
+        if (item is Map) {
+          final id = _readString(item['id']);
+          if (id != null) {
+            ids.add(id);
+          }
+        }
+      }
+    }
+
+    final restaurantRaw = payload['restaurant'];
+    if (restaurantRaw is Map) {
+      final id = _readString(restaurantRaw['id']);
+      if (id != null) {
+        ids.add(id);
+      }
+    }
+
+    final accessesRaw = payload['restaurantAccesses'];
+    if (accessesRaw is List) {
+      for (final item in accessesRaw) {
+        if (item is Map) {
+          final id = _readString(item['restaurantId']);
+          if (id != null) {
+            ids.add(id);
+          }
+        }
+      }
+    }
+
+    return ids.toList();
+  }
+
+  String? _readString(dynamic value) {
+    final normalized = value?.toString().trim();
+
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
   }
 }

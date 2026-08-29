@@ -1,9 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 
 class RestaurantOrdersApi {
   RestaurantOrdersApi({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient.instance;
+    : _apiClient = apiClient ?? ApiClient.instance;
 
   final ApiClient _apiClient;
 
@@ -29,12 +28,7 @@ class RestaurantOrdersApi {
     final queryString = Uri(queryParameters: query).query;
     final path = queryString.isEmpty ? '/orders' : '/orders?$queryString';
 
-    debugPrint('GET $path START');
-
     final dynamic response = await _apiClient.get(path);
-
-    debugPrint('GET $path response: $response');
-    debugPrint('GET $path response type: ${response.runtimeType}');
 
     if (response is List) {
       return response
@@ -83,18 +77,13 @@ class RestaurantOrdersApi {
   Future<Map<String, dynamic>> getOrderById(String id) async {
     final path = '/orders/$id';
 
-    debugPrint('GET $path START');
-
     final dynamic response = await _apiClient.get(path);
-
-    debugPrint('GET $path response: $response');
-    debugPrint('GET $path response type: ${response.runtimeType}');
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
     }
 
-    throw Exception('Некорректный ответ сервера при получении заказа');
+    throw Exception('Некорректный ответ сервера при загрузке заказа');
   }
 
   Future<Map<String, dynamic>> updateOrderStatus({
@@ -103,21 +92,37 @@ class RestaurantOrdersApi {
   }) async {
     final path = '/orders/$id/status';
 
-    debugPrint('PATCH $path START with status=$status');
-
-    final dynamic response = await _apiClient.patch(
-      path,
-      <String, dynamic>{'status': status},
-    );
-
-    debugPrint('PATCH $path response: $response');
-    debugPrint('PATCH $path response type: ${response.runtimeType}');
+    final dynamic response = await _apiClient.patch(path, <String, dynamic>{
+      'status': status,
+    });
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
     }
 
-    throw Exception('Некорректный ответ сервера при обновлении статуса');
+    throw Exception('Некорректный ответ сервера при обновлении заказа');
+  }
+
+  Future<Map<String, dynamic>> verifyPickup({
+    required String id,
+    required String pickupCode,
+  }) async {
+    final normalizedCode = pickupCode.trim();
+    if (normalizedCode.isEmpty) {
+      throw Exception('Введите код клиента');
+    }
+
+    final path = '/orders/$id/verify-pickup';
+
+    final dynamic response = await _apiClient.post(path, <String, dynamic>{
+      'pickupCode': normalizedCode,
+    });
+
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+
+    throw Exception('Некорректный ответ сервера при выдаче заказа');
   }
 
   Future<Map<String, dynamic>> assignCourier({
@@ -126,15 +131,9 @@ class RestaurantOrdersApi {
   }) async {
     final path = '/orders/$id/assign-courier';
 
-    debugPrint('PATCH $path START with courierUserId=$courierUserId');
-
-    final dynamic response = await _apiClient.patch(
-      path,
-      <String, dynamic>{'courierUserId': courierUserId},
-    );
-
-    debugPrint('PATCH $path response: $response');
-    debugPrint('PATCH $path response type: ${response.runtimeType}');
+    final dynamic response = await _apiClient.patch(path, <String, dynamic>{
+      'courierUserId': courierUserId,
+    });
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
@@ -143,20 +142,10 @@ class RestaurantOrdersApi {
     throw Exception('Некорректный ответ сервера при назначении курьера');
   }
 
-  Future<Map<String, dynamic>> unassignCourier({
-    required String id,
-  }) async {
+  Future<Map<String, dynamic>> unassignCourier({required String id}) async {
     final path = '/orders/$id/unassign-courier';
 
-    debugPrint('PATCH $path START');
-
-    final dynamic response = await _apiClient.patch(
-      path,
-      <String, dynamic>{},
-    );
-
-    debugPrint('PATCH $path response: $response');
-    debugPrint('PATCH $path response type: ${response.runtimeType}');
+    final dynamic response = await _apiClient.patch(path, <String, dynamic>{});
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
@@ -165,25 +154,17 @@ class RestaurantOrdersApi {
     throw Exception('Некорректный ответ сервера при снятии курьера');
   }
 
-  Future<Map<String, dynamic>> autoAssignCourier({
-    required String id,
-  }) async {
+  Future<Map<String, dynamic>> autoAssignCourier({required String id}) async {
     final path = '/orders/$id/auto-assign';
 
-    debugPrint('PATCH $path START');
-
-    final dynamic response = await _apiClient.patch(
-      path,
-      <String, dynamic>{},
-    );
-
-    debugPrint('PATCH $path response: $response');
-    debugPrint('PATCH $path response type: ${response.runtimeType}');
+    final dynamic response = await _apiClient.patch(path, <String, dynamic>{});
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
     }
 
-    throw Exception('Некорректный ответ сервера при автоназначении курьера');
+    throw Exception(
+      'Некорректный ответ сервера при автоматическом назначении курьера',
+    );
   }
 }

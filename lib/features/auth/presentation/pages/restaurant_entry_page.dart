@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
@@ -15,6 +16,8 @@ class RestaurantEntryPage extends StatefulWidget {
 class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
   final AuthStorage _storage = AuthStorage();
   final AuthApi _authApi = AuthApi();
+  String? _bootstrapError;
+  bool _isRetrying = false;
 
   @override
   void initState() {
@@ -23,6 +26,14 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
   }
 
   Future<void> _bootstrap() async {
+    if (_isRetrying) return;
+    if (mounted) {
+      setState(() {
+        _isRetrying = true;
+        _bootstrapError = null;
+      });
+    }
+
     final bool hasSession = await _storage.hasSession();
 
     if (!hasSession) {
@@ -33,40 +44,67 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
     try {
       await _authApi.getMe();
       _openShell();
+    } on ApiException catch (error) {
+      if (error.isInvalidSession) {
+        await _storage.clearTokens();
+        ApiClient.instance.clearSelectedRestaurantId();
+        _openLogin();
+        return;
+      }
+      _showRetry(error.message);
     } catch (_) {
-      await _storage.clearTokens();
-      _openLogin();
+      _showRetry('Не удалось проверить сессию');
+    } finally {
+      if (mounted) setState(() => _isRetrying = false);
     }
+  }
+
+  void _showRetry(String message) {
+    if (!mounted) return;
+    setState(() => _bootstrapError = message);
   }
 
   void _openLogin() {
     if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
-      AppPageRoute<void>(
-        page: const RestaurantAuthPage(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(AppPageRoute<void>(page: const RestaurantAuthPage()));
   }
 
   void _openShell() {
     if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
-      AppPageRoute<void>(
-        page: const RestaurantShellPage(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(AppPageRoute<void>(page: const RestaurantShellPage()));
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF0B0B0C),
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0C),
       body: Center(
-        child: CircularProgressIndicator(
-          color: Color(0xFF489F2A),
-        ),
+        child: _bootstrapError == null
+            ? const CircularProgressIndicator(color: Color(0xFF489F2A))
+            : Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _bootstrapError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _isRetrying ? null : _bootstrap,
+                      child: const Text('Повторить'),
+                    ),
+                  ],
+                ),
+              ),
       ),
     );
   }

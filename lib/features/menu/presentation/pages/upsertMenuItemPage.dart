@@ -220,7 +220,6 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       'composition': composition.isEmpty ? null : composition,
       'description': description.isEmpty ? null : description,
       'isDrink': _isDrink,
-      'isAvailable': _isAvailable,
     };
 
     try {
@@ -231,6 +230,14 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
           data,
         );
 
+        if (widget.item!.isAvailable != _isAvailable) {
+          await _api.updateAvailability(
+            restaurantId: widget.restaurantId,
+            productId: widget.item!.id,
+            value: _isAvailable,
+          );
+        }
+
         await _uploadPickedImages(widget.item!.id);
       } else {
         await _api.createProduct(
@@ -238,7 +245,9 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
           data,
         );
 
-        if (_mainImageFile != null || _otherImageFiles.isNotEmpty) {
+        if (_mainImageFile != null ||
+            _otherImageFiles.isNotEmpty ||
+            !_isAvailable) {
           final response = await _api.getMenu(widget.restaurantId);
           final parsed = RestaurantMenuData.fromJson(response);
 
@@ -250,6 +259,14 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
           );
 
           if (createdItem != null) {
+            if (!_isAvailable) {
+              await _api.updateAvailability(
+                restaurantId: widget.restaurantId,
+                productId: createdItem.id,
+                value: false,
+              );
+            }
+
             await _uploadPickedImages(createdItem.id);
           }
         }

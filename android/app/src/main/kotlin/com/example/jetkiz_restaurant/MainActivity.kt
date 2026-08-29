@@ -1,4 +1,4 @@
-package com.example.jetkiz_restaurant
+﻿package com.example.jetkiz_restaurant
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,6 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
+import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/core/session/restaurant_session.dart';
+import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
 import 'package:jetkiz_restaurant/features/finance/presentation/pages/restaurant_finance_page.dart';
 import 'package:jetkiz_restaurant/features/menu/presentation/pages/restaurant_menu_page.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/widgets/restaurant_bottom_bar.dart';
@@ -24,6 +29,8 @@ class RestaurantShellPage extends StatefulWidget {
 
 class _RestaurantShellPageState extends State<RestaurantShellPage> {
   late RestaurantBottomBarTab _currentTab;
+  StreamSubscription<void>? _sessionExpiredSubscription;
+  bool _openingLogin = false;
 
   final List<RestaurantBottomBarTab> _tabOrder = <RestaurantBottomBarTab>[
     RestaurantBottomBarTab.orders,
@@ -37,7 +44,27 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
   void initState() {
     super.initState();
     _currentTab = widget.initialTab;
+    _sessionExpiredSubscription = ApiClient.instance.sessionExpiredEvents
+        .listen((_) => _openLogin());
+    unawaited(RestaurantPushNotificationService.instance.markNavigationReady());
     _loadRestaurant();
+  }
+
+  @override
+  void dispose() {
+    _sessionExpiredSubscription?.cancel();
+    RestaurantPushNotificationService.instance.markNavigationUnavailable();
+    super.dispose();
+  }
+
+  void _openLogin() {
+    if (!mounted || _openingLogin) return;
+    _openingLogin = true;
+    RestaurantPushNotificationService.instance.markNavigationUnavailable();
+    Navigator.of(context).pushAndRemoveUntil(
+      AppPageRoute<void>(page: const RestaurantAuthPage()),
+      (route) => false,
+    );
   }
 
   Future<void> _loadRestaurant() async {
@@ -88,10 +115,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F1115),
       extendBody: true,
-      body: SafeArea(
-        bottom: false,
-        child: _buildPage(),
-      ),
+      body: SafeArea(bottom: false, child: _buildPage()),
       bottomNavigationBar: RestaurantBottomBar(
         currentTab: _currentTab,
         onTabSelected: _onTabSelected,
@@ -110,10 +134,7 @@ class _RestaurantSupportStubPage extends StatelessWidget {
       child: Center(
         child: Text(
           'Поддержка',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-          ),
+          style: TextStyle(color: Colors.white, fontSize: 24),
         ),
       ),
     );

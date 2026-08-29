@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:jetkiz_restaurant/core/config/app_config.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
+import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
+import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
 import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
@@ -16,9 +18,16 @@ import 'package:jetkiz_restaurant/features/restaurant_profile/widgets/restaurant
 // Restaurant profile page.
 //
 // BACKEND:
+// - GET /auth/me
 // - GET /restaurants/me
 // - PATCH /restaurants/me
 // - POST /restaurants/:id/cover
+//
+// MULTI-BRANCH:
+// - restaurants[] / restaurantIds[] are loaded from /auth/me
+// - selected branch is stored in AuthStorage
+// - ApiClient sends x-restaurant-id automatically
+// - switching a branch reloads /restaurants/me
 //
 // IMPORTANT:
 // Backend upload currently accepts only:
@@ -28,10 +37,7 @@ import 'package:jetkiz_restaurant/features/restaurant_profile/widgets/restaurant
 // selected image is converted to JPG before upload.
 
 class RestaurantProfilePage extends StatefulWidget {
-  const RestaurantProfilePage({
-    super.key,
-    this.hideBottomBar = false,
-  });
+  const RestaurantProfilePage({super.key, this.hideBottomBar = false});
 
   final bool hideBottomBar;
 
@@ -41,6 +47,7 @@ class RestaurantProfilePage extends StatefulWidget {
 
 class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   late final RestaurantApi _restaurantApi;
+  late final AuthApi _authApi;
   final ImagePicker _imagePicker = ImagePicker();
 
   Future<RestaurantProfileData>? _profileFuture;
@@ -50,10 +57,14 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   bool _isEditing = false;
   bool _isSaving = false;
   bool _isUploadingPhoto = false;
+  bool _isLoadingBranches = false;
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _workingHoursController = TextEditingController();
+
+  List<_RestaurantBranch> _branches = const [];
+  String? _selectedRestaurantId;
 
   String? _lastProfileSyncKey;
   File? _localPhotoPreview;
@@ -63,7 +74,9 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   void initState() {
     super.initState();
     _restaurantApi = RestaurantApi(ApiClient());
+    _authApi = AuthApi();
     _profileFuture = _restaurantApi.getMyRestaurant();
+    _loadBranches();
   }
 
   @override
@@ -79,6 +92,298 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       _profileFuture = _restaurantApi.getMyRestaurant();
     });
     await _profileFuture;
+  }
+
+  Future<void> _loadBranches() async {
+    if (_isLoadingBranches) return;
+
+    setState(() {
+      _isLoadingBranches = true;
+    });
+
+    try {
+      final me = await _authApi.getMe();
+      final branches = _parseBranches(me);
+
+      final savedRestaurantId = await AuthStorage().getSelectedRestaurantId();
+      final apiRestaurantId = ApiClient.instance.selectedRestaurantId;
+      final backendRestaurantId = me['restaurantId']?.toString().trim();
+
+      String? selectedRestaurantId =
+          _normalizeRestaurantId(savedRestaurantId) ??
+          _normalizeRestaurantId(apiRestaurantId) ??
+          _normalizeRestaurantId(backendRestaurantId);
+
+      if (branches.isNotEmpty &&
+          (selectedRestaurantId == null ||
+              !branches.any((item) => item.id == selectedRestaurantId))) {
+        selectedRestaurantId = branches.first.id;
+        await AuthStorage().saveSelectedRestaurantId(selectedRestaurantId);
+        ApiClient.instance.setSelectedRestaurantId(selectedRestaurantId);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _branches = branches;
+        _selectedRestaurantId = selectedRestaurantId;
+      });
+    } catch (_) {
+      // Не ломаем профиль, если список филиалов временно не загрузился.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingBranches = false;
+        });
+      }
+    }
+  }
+
+  List<_RestaurantBranch> _parseBranches(Map<String, dynamic> payload) {
+    final result = <_RestaurantBranch>[];
+    final seen = <String>{};
+
+    void addBranch({required String? id, String? nameRu, String? nameKk}) {
+      final normalizedId = _normalizeRestaurantId(id);
+
+      if (normalizedId == null || seen.contains(normalizedId)) {
+        return;
+      }
+
+      seen.add(normalizedId);
+
+      result.add(
+        _RestaurantBranch(
+          id: normalizedId,
+          nameRu: _normalizeText(nameRu) ?? 'Филиал ${result.length + 1}',
+          nameKk: _normalizeText(nameKk),
+        ),
+      );
+    }
+
+    final restaurantsRaw = payload['restaurants'];
+    if (restaurantsRaw is List) {
+      for (final item in restaurantsRaw) {
+        if (item is Map) {
+          addBranch(
+            id: item['id']?.toString(),
+            nameRu: item['nameRu']?.toString(),
+            nameKk: item['nameKk']?.toString(),
+          );
+        }
+      }
+    }
+
+    final restaurantRaw = payload['restaurant'];
+    if (restaurantRaw is Map) {
+      addBranch(
+        id: restaurantRaw['id']?.toString(),
+        nameRu: restaurantRaw['nameRu']?.toString(),
+        nameKk: restaurantRaw['nameKk']?.toString(),
+      );
+    }
+
+    final restaurantIdsRaw = payload['restaurantIds'];
+    if (restaurantIdsRaw is List) {
+      for (final item in restaurantIdsRaw) {
+        addBranch(id: item?.toString());
+      }
+    }
+
+    final accessesRaw = payload['restaurantAccesses'];
+    if (accessesRaw is List) {
+      for (final item in accessesRaw) {
+        if (item is Map) {
+          final nestedRestaurant = item['restaurant'];
+
+          if (nestedRestaurant is Map) {
+            addBranch(
+              id:
+                  nestedRestaurant['id']?.toString() ??
+                  item['restaurantId']?.toString(),
+              nameRu: nestedRestaurant['nameRu']?.toString(),
+              nameKk: nestedRestaurant['nameKk']?.toString(),
+            );
+          } else {
+            addBranch(id: item['restaurantId']?.toString());
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  String? _normalizeRestaurantId(String? value) {
+    final normalized = value?.trim();
+
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  String? _normalizeText(String? value) {
+    final normalized = value?.trim();
+
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  Future<void> _selectBranch(_RestaurantBranch branch) async {
+    if (_selectedRestaurantId == branch.id) {
+      return;
+    }
+
+    try {
+      await AuthStorage().saveSelectedRestaurantId(branch.id);
+      ApiClient.instance.setSelectedRestaurantId(branch.id);
+
+      if (!mounted) return;
+
+      setState(() {
+        _selectedRestaurantId = branch.id;
+        _isEditing = false;
+        _lastProfileSyncKey = null;
+        _localPhotoPreview = null;
+        _profileFuture = _restaurantApi.getMyRestaurant();
+      });
+
+      await _profileFuture;
+
+      if (!mounted) return;
+      _showSnackBar('Филиал выбран: ${branch.displayName}');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _showBranchSelector() async {
+    if (_branches.length <= 1) {
+      _showSnackBar('У вас один филиал');
+      return;
+    }
+
+    final selected = await showModalBottomSheet<_RestaurantBranch>(
+      context: context,
+      backgroundColor: const Color(0xFF0F1829),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF33445F),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Выберите филиал',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.55,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _branches.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final branch = _branches[index];
+                      final isSelected = branch.id == _selectedRestaurantId;
+
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => Navigator.of(context).pop(branch),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0x223A9F2A)
+                                  : const Color(0xFF151F32),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF489F2A)
+                                    : const Color(0xFF22324A),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0x33489F2A)
+                                        : const Color(0xFF0E1626),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Icon(
+                                    isSelected
+                                        ? Icons.check_rounded
+                                        : Icons.storefront_rounded,
+                                    color: isSelected
+                                        ? const Color(0xFF65C044)
+                                        : const Color(0xFF7E8CA3),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    branch.displayName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected != null) {
+      await _selectBranch(selected);
+    }
   }
 
   void _syncControllersFromProfile(RestaurantProfileData profile) {
@@ -171,9 +476,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       _showSnackBar('Профиль сохранён');
     } catch (e) {
       if (!mounted) return;
-      _showSnackBar(
-        e.toString().replaceFirst('Exception: ', ''),
-      );
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() {
@@ -261,9 +564,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       setState(() {
         _localPhotoPreview = null;
       });
-      _showSnackBar(
-        e.toString().replaceFirst('Exception: ', ''),
-      );
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() {
@@ -274,14 +575,20 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   }
 
   Future<void> _logout() async {
+    try {
+      await RestaurantPushNotificationService.instance.unregisterCurrentToken();
+    } catch (_) {
+      // Local logout must still complete when unregister is temporarily unavailable.
+    }
+
+    RestaurantPushNotificationService.instance.markNavigationUnavailable();
     await AuthStorage().clearTokens();
+    ApiClient.instance.clearSelectedRestaurantId();
 
     if (!mounted) return;
 
     Navigator.of(context).pushAndRemoveUntil(
-      AppPageRoute<void>(
-        page: const RestaurantAuthPage(),
-      ),
+      AppPageRoute<void>(page: const RestaurantAuthPage()),
       (route) => false,
     );
   }
@@ -289,9 +596,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -317,9 +622,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
           future: _profileFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
@@ -389,6 +692,10 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
                         ? _ProfileTabView(
                             key: const ValueKey('profile_tab'),
                             profile: profile,
+                            branches: _branches,
+                            selectedRestaurantId: _selectedRestaurantId,
+                            isLoadingBranches: _isLoadingBranches,
+                            onChangeBranch: () => _showBranchSelector(),
                             onReload: _reloadProfile,
                             isEditing: _isEditing,
                             isSaving: _isSaving,
@@ -418,10 +725,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   }
 }
 
-enum _RestaurantProfileTab {
-  profile,
-  statistics,
-}
+enum _RestaurantProfileTab { profile, statistics }
 
 class _ProfileTopHeader extends StatelessWidget {
   const _ProfileTopHeader({
@@ -447,10 +751,7 @@ class _ProfileTopHeader extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF489F2A),
-            Color(0xFF3A7E21),
-          ],
+          colors: [Color(0xFF489F2A), Color(0xFF3A7E21)],
         ),
         borderRadius: BorderRadius.circular(22),
         boxShadow: const [
@@ -509,12 +810,15 @@ class _ProfileTopHeader extends StatelessWidget {
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : Icon(
-                            isEditing ? Icons.close_rounded : Icons.edit_outlined,
+                            isEditing
+                                ? Icons.close_rounded
+                                : Icons.edit_outlined,
                             color: Colors.white,
                             size: 18,
                           ),
@@ -609,6 +913,10 @@ class _ProfileTabView extends StatelessWidget {
   const _ProfileTabView({
     super.key,
     required this.profile,
+    required this.branches,
+    required this.selectedRestaurantId,
+    required this.isLoadingBranches,
+    required this.onChangeBranch,
     required this.onReload,
     required this.isEditing,
     required this.isSaving,
@@ -625,6 +933,10 @@ class _ProfileTabView extends StatelessWidget {
   });
 
   final RestaurantProfileData profile;
+  final List<_RestaurantBranch> branches;
+  final String? selectedRestaurantId;
+  final bool isLoadingBranches;
+  final VoidCallback onChangeBranch;
   final Future<void> Function() onReload;
   final bool isEditing;
   final bool isSaving;
@@ -656,6 +968,13 @@ class _ProfileTabView extends StatelessWidget {
             cacheBuster: photoCacheBuster,
           ),
           const SizedBox(height: 14),
+          _BranchSelectorCard(
+            branches: branches,
+            selectedRestaurantId: selectedRestaurantId,
+            isLoading: isLoadingBranches,
+            onTap: onChangeBranch,
+          ),
+          const SizedBox(height: 12),
           _InfoCard(
             icon: Icons.storefront_rounded,
             iconBg: const Color(0x33489F2A),
@@ -740,8 +1059,9 @@ class _ProfileTabView extends StatelessWidget {
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : const Text(
@@ -766,9 +1086,7 @@ class _ProfileTabView extends StatelessWidget {
             ),
             child: const Text(
               'Выйти из аккаунта',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -778,12 +1096,15 @@ class _ProfileTabView extends StatelessWidget {
 
   static String _displayName(RestaurantProfileData profile) {
     if (profile.nameRu.trim().isNotEmpty) return profile.nameRu.trim();
-    if (profile.nameKk?.trim().isNotEmpty == true) return profile.nameKk!.trim();
+    if (profile.nameKk?.trim().isNotEmpty == true)
+      return profile.nameKk!.trim();
     return 'Без названия';
   }
 
   static String _displayAddress(RestaurantProfileData profile) {
-    if (profile.address?.trim().isNotEmpty == true) return profile.address!.trim();
+    if (profile.address?.trim().isNotEmpty == true) {
+      return profile.address!.trim();
+    }
     return 'Адрес не указан';
   }
 
@@ -834,14 +1155,9 @@ class _RestaurantPhotoCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF172338),
-            Color(0xFF0F1829),
-          ],
+          colors: [Color(0xFF172338), Color(0xFF0F1829)],
         ),
-        border: Border.all(
-          color: const Color(0xFF22324A),
-        ),
+        border: Border.all(color: const Color(0xFF22324A)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x22000000),
@@ -880,10 +1196,7 @@ class _RestaurantPhotoCard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [
-                    Color(0x66000000),
-                    Colors.transparent,
-                  ],
+                  colors: [Color(0x66000000), Colors.transparent],
                 ),
               ),
             ),
@@ -909,16 +1222,15 @@ class _RestaurantPhotoCard extends StatelessWidget {
                         height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Icon(Icons.photo_library_outlined, size: 18),
                 label: Text(
                   isUploading ? 'Загрузка...' : 'Изменить фото',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ),
@@ -960,10 +1272,7 @@ class _PhotoPlaceholder extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1B2A43),
-            Color(0xFF0E1626),
-          ],
+          colors: [Color(0xFF1B2A43), Color(0xFF0E1626)],
         ),
       ),
       child: Column(
@@ -975,9 +1284,7 @@ class _PhotoPlaceholder extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.10),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
             ),
             alignment: Alignment.center,
             child: const Icon(
@@ -1045,18 +1352,14 @@ class _InfoCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF151F32),
-            Color(0xFF0D1524),
-          ],
+          colors: [Color(0xFF151F32), Color(0xFF0D1524)],
         ),
-        border: Border.all(
-          color: const Color(0xFF22324A),
-        ),
+        border: Border.all(color: const Color(0xFF22324A)),
       ),
       child: Row(
-        crossAxisAlignment:
-            multiLine ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment: multiLine
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
           Container(
             width: 42,
@@ -1064,16 +1367,10 @@ class _InfoCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: iconBg,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: iconColor.withOpacity(0.28),
-              ),
+              border: Border.all(color: iconColor.withOpacity(0.28)),
             ),
             alignment: Alignment.center,
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 20,
-            ),
+            child: Icon(icon, color: iconColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1156,18 +1453,14 @@ class _EditableInfoCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF151F32),
-            Color(0xFF0D1524),
-          ],
+          colors: [Color(0xFF151F32), Color(0xFF0D1524)],
         ),
-        border: Border.all(
-          color: const Color(0xFF22324A),
-        ),
+        border: Border.all(color: const Color(0xFF22324A)),
       ),
       child: Row(
-        crossAxisAlignment:
-            multiLine ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment: multiLine
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
           Container(
             width: 42,
@@ -1175,16 +1468,10 @@ class _EditableInfoCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: iconBg,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: iconColor.withOpacity(0.28),
-              ),
+              border: Border.all(color: iconColor.withOpacity(0.28)),
             ),
             alignment: Alignment.center,
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 20,
-            ),
+            child: Icon(icon, color: iconColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1227,9 +1514,7 @@ class _EditableInfoCard extends StatelessWidget {
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF2A3A52),
-                        ),
+                        borderSide: const BorderSide(color: Color(0xFF2A3A52)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -1240,9 +1525,7 @@ class _EditableInfoCard extends StatelessWidget {
                       ),
                       disabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF2A3A52),
-                        ),
+                        borderSide: const BorderSide(color: Color(0xFF2A3A52)),
                       ),
                     ),
                   )
@@ -1266,9 +1549,7 @@ class _EditableInfoCard extends StatelessWidget {
 }
 
 class _StatusCard extends StatelessWidget {
-  const _StatusCard({
-    required this.status,
-  });
+  const _StatusCard({required this.status});
 
   final String? status;
 
@@ -1284,19 +1565,11 @@ class _StatusCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isOpen
-              ? [
-                  const Color(0x1A489F2A),
-                  const Color(0x143A7E21),
-                ]
-              : [
-                  const Color(0x1AF04444),
-                  const Color(0x14B72F2F),
-                ],
+              ? [const Color(0x1A489F2A), const Color(0x143A7E21)]
+              : [const Color(0x1AF04444), const Color(0x14B72F2F)],
         ),
         border: Border.all(
-          color: isOpen
-              ? const Color(0x55489F2A)
-              : const Color(0x55E45252),
+          color: isOpen ? const Color(0x55489F2A) : const Color(0x55E45252),
         ),
       ),
       child: Row(
@@ -1305,9 +1578,7 @@ class _StatusCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: isOpen
-                  ? const Color(0x33489F2A)
-                  : const Color(0x33E45252),
+              color: isOpen ? const Color(0x33489F2A) : const Color(0x33E45252),
               shape: BoxShape.circle,
               border: Border.all(
                 color: isOpen
@@ -1318,9 +1589,7 @@ class _StatusCard extends StatelessWidget {
             alignment: Alignment.center,
             child: Icon(
               Icons.radio_button_checked_rounded,
-              color: isOpen
-                  ? const Color(0xFF65C044)
-                  : const Color(0xFFFF6E6E),
+              color: isOpen ? const Color(0xFF65C044) : const Color(0xFFFF6E6E),
               size: 18,
             ),
           ),
@@ -1363,5 +1632,164 @@ class _StatusCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _RestaurantBranch {
+  const _RestaurantBranch({
+    required this.id,
+    required this.nameRu,
+    this.nameKk,
+  });
+
+  final String id;
+  final String nameRu;
+  final String? nameKk;
+
+  String get displayName {
+    final ru = nameRu.trim();
+    if (ru.isNotEmpty) return ru;
+
+    final kk = nameKk?.trim();
+    if (kk != null && kk.isNotEmpty) return kk;
+
+    return id;
+  }
+}
+
+class _BranchSelectorCard extends StatelessWidget {
+  const _BranchSelectorCard({
+    required this.branches,
+    required this.selectedRestaurantId,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  final List<_RestaurantBranch> branches;
+  final String? selectedRestaurantId;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedBranch = _resolveSelectedBranch();
+
+    if (!isLoading && selectedBranch == null) {
+      return const SizedBox.shrink();
+    }
+
+    final canChange = branches.length > 1;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: isLoading ? null : onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF151F32), Color(0xFF0D1524)],
+            ),
+            border: Border.all(color: const Color(0xFF22324A)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0x33489F2A),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0x55489F2A)),
+                ),
+                alignment: Alignment.center,
+                child: isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF65C044),
+                          ),
+                        ),
+                      )
+                    : const Icon(
+                        Icons.account_tree_outlined,
+                        color: Color(0xFF65C044),
+                        size: 20,
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Филиал',
+                      style: TextStyle(
+                        color: Color(0xFF7F8BA0),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      isLoading
+                          ? 'Загрузка филиалов...'
+                          : selectedBranch?.displayName ?? 'Филиал не выбран',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (canChange) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Нажмите, чтобы сменить активный филиал',
+                        style: TextStyle(
+                          color: Color(0xFF93A0B4),
+                          fontSize: 12,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (canChange)
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: Color(0xFF93A0B4),
+                  size: 24,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  _RestaurantBranch? _resolveSelectedBranch() {
+    if (branches.isEmpty) {
+      return null;
+    }
+
+    final selectedId = selectedRestaurantId?.trim();
+
+    if (selectedId != null && selectedId.isNotEmpty) {
+      for (final branch in branches) {
+        if (branch.id == selectedId) {
+          return branch;
+        }
+      }
+    }
+
+    return branches.first;
   }
 }

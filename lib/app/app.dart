@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+
+import '../core/push/restaurant_push_notification_service.dart';
 import '../features/auth/presentation/pages/restaurant_entry_page.dart';
 
 class JetkizRestaurantApp extends StatelessWidget {
@@ -8,6 +10,7 @@ class JetkizRestaurantApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: RestaurantPushNotificationService.navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Jetkiz Restaurant',
       locale: const Locale('ru'),

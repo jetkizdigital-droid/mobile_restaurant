@@ -12,3 +12,4 @@ ios/Pods/
 token.txt
 *.accessToken
 *.iml
+.android_repair_backup_*/

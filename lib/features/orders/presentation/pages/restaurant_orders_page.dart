@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
 import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_order_details_page.dart';
 
 class RestaurantOrdersPage extends StatefulWidget {
-  const RestaurantOrdersPage({
-    super.key,
-    this.hideBottomBar = false,
-  });
+  const RestaurantOrdersPage({super.key, this.hideBottomBar = false});
 
   final bool hideBottomBar;
 
@@ -19,6 +19,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   final RestaurantOrdersApi _ordersApi = RestaurantOrdersApi();
 
   late final AnimationController _blinkController;
+  StreamSubscription<void>? _pushRefreshSubscription;
 
   bool _isLoading = true;
   String? _error;
@@ -35,7 +36,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     _OrderFilterItem(code: 'CREATED', label: 'Новые'),
     _OrderFilterItem(code: 'ACCEPTED', label: 'Приняты'),
     _OrderFilterItem(code: 'COOKING', label: 'Готовятся'),
-    _OrderFilterItem(code: 'READY', label: 'Готово'),
+    _OrderFilterItem(code: 'READY', label: 'Готовы'),
     _OrderFilterItem(code: 'ON_THE_WAY', label: 'В пути'),
     _OrderFilterItem(code: 'DELIVERED', label: 'Доставлены'),
     _OrderFilterItem(code: 'CANCELED', label: 'Отменены'),
@@ -44,16 +45,23 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   @override
   void initState() {
     super.initState();
+
     _blinkController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
+
+    _pushRefreshSubscription = RestaurantPushNotificationService
+        .instance
+        .ordersRefreshEvents
+        .listen((_) => unawaited(_loadOrders()));
 
     _loadOrders();
   }
 
   @override
   void dispose() {
+    _pushRefreshSubscription?.cancel();
     _blinkController.dispose();
     super.dispose();
   }
@@ -80,7 +88,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
       if (!mounted) return;
 
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = _cleanError(e);
         _isLoading = false;
       });
     }
@@ -88,6 +96,10 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
   Future<void> _refresh() async {
     await _loadOrders();
+  }
+
+  String _cleanError(Object error) {
+    return error.toString().replaceFirst('Exception: ', '').trim();
   }
 
   void _applyFilter() {
@@ -101,7 +113,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     }).toList();
   }
 
-  void _selectStatus(String status) {
+  void _selectFilter(String status) {
     if (_selectedStatus == status) return;
 
     setState(() {
@@ -111,15 +123,10 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   }
 
   Future<void> _openOrder(Map<String, dynamic> order) async {
-    final orderId = _orderId(order);
+    final orderId = _string(order['id']);
 
     if (orderId.isEmpty) {
-      final number = _orderNumber(order);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Не удалось открыть заказ #$number'),
-        ),
-      );
+      _showSnackBar('Некорректный ID заказа');
       return;
     }
 
@@ -135,15 +142,12 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
   Future<void> _changeStatus(
     Map<String, dynamic> order,
-    String newStatus,
+    String nextStatus,
   ) async {
-    final orderId = _orderId(order);
+    final orderId = _string(order['id']);
+
     if (orderId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Не удалось определить ID заказа'),
-        ),
-      );
+      _showSnackBar('Некорректный ID заказа');
       return;
     }
 
@@ -156,296 +160,328 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     try {
       final updated = await _ordersApi.updateOrderStatus(
         id: orderId,
-        status: newStatus,
+        status: nextStatus,
       );
 
       if (!mounted) return;
 
-      final updatedStatus =
-          (updated['status'] ?? updated['orderStatus'] ?? newStatus).toString();
-
-      final updatedOrder = Map<String, dynamic>.from(order);
-      updatedOrder['status'] = updatedStatus;
-      if (updated.containsKey('updatedAt')) {
-        updatedOrder['updatedAt'] = updated['updatedAt'];
-      }
-      if (updated.containsKey('pickedUpAt')) {
-        updatedOrder['pickedUpAt'] = updated['pickedUpAt'];
-      }
-      if (updated.containsKey('deliveredAt')) {
-        updatedOrder['deliveredAt'] = updated['deliveredAt'];
-      }
-
-      final index = _allOrders.indexWhere((item) => _orderId(item) == orderId);
-      if (index != -1) {
-        _allOrders[index] = updatedOrder;
-      }
-
       setState(() {
+        _allOrders = _allOrders.map((item) {
+          if (_string(item['id']) != orderId) return item;
+          return updated;
+        }).toList();
+
         _applyFilter();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Статус заказа #${_orderNumber(order)} изменён: ${_statusLabel(updatedStatus)}',
-          ),
-        ),
+      _showSnackBar(
+        _statusChangedMessage(nextStatus, isPickup: _isPickup(order)),
       );
     } catch (e) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-          ),
-        ),
-      );
+      _showSnackBar(_cleanError(e));
     } finally {
-      if (mounted) {
-        setState(() {
-          _updatingOrderIds.remove(orderId);
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _updatingOrderIds.remove(orderId);
+      });
+    }
+  }
+
+  Future<void> _confirmReject(Map<String, dynamic> order) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF111827),
+          title: const Text(
+            'Отклонить заказ?',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Новый заказ будет отклонён. Продолжить?',
+            style: TextStyle(color: Color(0xFFCBD5E1)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Нет'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Отклонить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok == true) {
+      await _changeStatus(order, 'REJECTED');
+    }
+  }
+
+  String _statusChangedMessage(String status, {required bool isPickup}) {
+    switch (status) {
+      case 'ACCEPTED':
+        return 'Заказ принят';
+      case 'COOKING':
+        return 'Заказ переведён в приготовление';
+      case 'READY':
+        return isPickup ? 'Заказ готов к выдаче' : 'Заказ готов';
+      case 'CANCELED':
+        return 'Заказ отменён';
+      case 'REJECTED':
+        return 'Заказ отклонён';
+      default:
+        return 'Статус заказа обновлён';
     }
   }
 
   String _status(Map<String, dynamic> order) {
-    final dynamic value = order['status'] ?? order['orderStatus'];
-    return value?.toString() ?? 'UNKNOWN';
+    return _string(order['status']).toUpperCase();
+  }
+
+  String _fulfillmentType(Map<String, dynamic> order) {
+    return _string(order['fulfillmentType']).toUpperCase();
+  }
+
+  bool _isPickup(Map<String, dynamic> order) {
+    return _fulfillmentType(order) == 'PICKUP';
+  }
+
+  bool _isPickupVerified(Map<String, dynamic> order) {
+    return _dateTime(order['pickupCodeVerifiedAt']) != null;
+  }
+
+  bool _isIssuedPickup(Map<String, dynamic> order) {
+    return _isPickup(order) &&
+        (_isPickupVerified(order) || _status(order) == 'DELIVERED');
   }
 
   String _orderId(Map<String, dynamic> order) {
-    final dynamic value =
-        order['id'] ?? order['_id'] ?? order['orderId'] ?? order['number'];
-    return value?.toString() ?? '';
+    return _string(order['id']);
   }
 
   String _orderNumber(Map<String, dynamic> order) {
-    final dynamic value =
-        order['number'] ?? order['id'] ?? order['_id'] ?? order['orderId'];
-    return value?.toString() ?? '—';
+    final number = order['number'];
+
+    if (number == null) return '—';
+
+    final text = number.toString().trim();
+    if (text.isEmpty || text.toLowerCase() == 'null') return '—';
+
+    return '#$text';
   }
 
-  int _total(Map<String, dynamic> order) {
-    final dynamic value =
-        order['total'] ?? order['totalPrice'] ?? order['sum'] ?? 0;
-
-    if (value is int) return value;
-    if (value is double) return value.round();
-    return int.tryParse(value.toString()) ?? 0;
+  int _money(Map<String, dynamic> order, String key) {
+    return _int(order[key]);
   }
 
-  String _customerName(Map<String, dynamic> order) {
-    final dynamic user = order['user'];
+  int _itemsCount(Map<String, dynamic> order) {
+    final rawItemsCount = _int(order['itemsCount']);
 
-    if (user is Map<String, dynamic>) {
-      final first = (user['firstName'] ?? '').toString().trim();
-      final last = (user['lastName'] ?? '').toString().trim();
-      final full = '$first $last'.trim();
-      if (full.isNotEmpty) return full;
+    if (rawItemsCount > 0) return rawItemsCount;
 
-      final phone = (user['phone'] ?? '').toString().trim();
+    final items = order['items'];
+    if (items is List) return items.length;
+
+    final previewItems = order['previewItems'];
+    if (previewItems is List) return previewItems.length;
+
+    return 0;
+  }
+
+  List<_OrderPreviewItem> _previewItems(Map<String, dynamic> order) {
+    final raw = order['previewItems'] is List
+        ? order['previewItems'] as List
+        : order['items'] is List
+        ? order['items'] as List
+        : const <dynamic>[];
+
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => _OrderPreviewItem(
+            title: _string(item['title']).isEmpty
+                ? 'Позиция'
+                : _string(item['title']),
+            quantity: _int(item['quantity']),
+            price: _int(item['price']),
+          ),
+        )
+        .toList();
+  }
+
+  String _clientName(Map<String, dynamic> order) {
+    final user = order['user'];
+
+    if (user is Map) {
+      final firstName = _string(user['firstName']);
+      final lastName = _string(user['lastName']);
+      final fullName = '$firstName $lastName'.trim();
+
+      if (fullName.isNotEmpty) return fullName;
+
+      final phone = _string(user['phone']);
       if (phone.isNotEmpty) return phone;
     }
 
-    final phone = (order['phone'] ?? '').toString().trim();
+    final phone = _string(order['phone']);
     if (phone.isNotEmpty) return phone;
-
-    final customerName = (order['customerName'] ?? '').toString().trim();
-    if (customerName.isNotEmpty) return customerName;
 
     return 'Клиент';
   }
 
-  String _itemsPreview(Map<String, dynamic> order) {
-    final dynamic rawItems = order['items'];
+  String _courierName(Map<String, dynamic> order) {
+    final courier = order['courier'];
 
-    if (rawItems is! List || rawItems.isEmpty) {
-      return 'Состав заказа не указан';
+    if (courier is Map) {
+      final firstName = _string(courier['firstName']);
+      final lastName = _string(courier['lastName']);
+      final fullName = '$firstName $lastName'.trim();
+
+      if (fullName.isNotEmpty) return fullName;
+
+      final phone = _string(courier['phone']);
+      if (phone.isNotEmpty) return phone;
     }
 
-    final items = rawItems.whereType<Map>().toList();
-    if (items.isEmpty) return 'Состав заказа не указан';
-
-    final titles = items.take(2).map((item) {
-      final title = (item['title'] ?? item['name'] ?? 'Без названия').toString();
-      final qty = item['quantity']?.toString() ?? '1';
-      return '$title ×$qty';
-    }).join(', ');
-
-    if (items.length <= 2) return titles;
-    return '$titles и ещё ${items.length - 2}';
-  }
-
-  DateTime? _parseDate(dynamic value) {
-    if (value == null) return null;
-    if (value is DateTime) return value;
-
-    final parsed = DateTime.tryParse(value.toString());
-    return parsed;
+    return 'Курьер не назначен';
   }
 
   DateTime? _createdAt(Map<String, dynamic> order) {
-    return _parseDate(order['createdAt']);
+    return _dateTime(order['createdAt']);
   }
 
   DateTime? _promisedAt(Map<String, dynamic> order) {
-    return _parseDate(order['promisedAt']);
+    return _dateTime(order['promisedAt']);
   }
 
-  bool _isOverdue(Map<String, dynamic> order) {
-    final promisedAt = _promisedAt(order);
+  String _formatDateTime(DateTime? value) {
+    if (value == null) return '—';
+
+    final local = value.toLocal();
+
+    return '${_two(local.day)}.${_two(local.month)}.${local.year} '
+        '${_two(local.hour)}:${_two(local.minute)}';
+  }
+
+  String _two(int value) {
+    return value.toString().padLeft(2, '0');
+  }
+
+  String _string(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return '';
+    }
+
+    return text;
+  }
+
+  int _int(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+
+    final text = value?.toString().trim() ?? '';
+
+    if (text.isEmpty || text.toLowerCase() == 'null') return 0;
+
+    return int.tryParse(text) ?? double.tryParse(text)?.round() ?? 0;
+  }
+
+  DateTime? _dateTime(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+
+    if (text.isEmpty || text.toLowerCase() == 'null') return null;
+
+    return DateTime.tryParse(text);
+  }
+
+  bool _isUpdating(Map<String, dynamic> order) {
+    return _updatingOrderIds.contains(_orderId(order));
+  }
+
+  List<_OrderAction> _actionsFor(Map<String, dynamic> order) {
     final status = _status(order);
+    final isPickup = _isPickup(order);
 
-    if (promisedAt == null) return false;
-    if (status == 'DELIVERED' || status == 'CANCELED') return false;
-
-    return DateTime.now().isAfter(promisedAt.toLocal());
-  }
-
-  String _formatHm(DateTime dt) {
-    final hh = dt.hour.toString().padLeft(2, '0');
-    final mm = dt.minute.toString().padLeft(2, '0');
-    return '$hh:$mm';
-  }
-
-  String _timeText(Map<String, dynamic> order) {
-    final createdAt = _createdAt(order);
-    final promisedAt = _promisedAt(order);
-
-    if (createdAt == null && promisedAt == null) {
-      return 'Время не указано';
-    }
-
-    final created = createdAt != null ? _formatHm(createdAt.toLocal()) : null;
-    final promised = promisedAt != null ? _formatHm(promisedAt.toLocal()) : null;
-
-    if (created != null && promised != null) {
-      final remain = promisedAt!.difference(DateTime.now()).inMinutes;
-      final remainText = remain >= 0
-          ? '$remain мин осталось'
-          : '${remain.abs()} мин просрочка';
-      return '$created · $remainText';
-    }
-
-    return created ?? promised ?? 'Время не указано';
-  }
-
-  List<_OrderAction> _actionsForStatus(String status) {
     switch (status) {
       case 'CREATED':
         return const [
           _OrderAction(
-            nextStatus: 'ACCEPTED',
             label: 'Принять',
-            icon: Icons.check_rounded,
-            isPrimary: false,
-          ),
-          _OrderAction(
             nextStatus: 'ACCEPTED',
-            label: 'Начать готовить',
-            icon: Icons.local_fire_department_outlined,
+            icon: Icons.check_circle_outline,
             isPrimary: true,
           ),
           _OrderAction(
-            nextStatus: 'CANCELED',
-            label: 'Отменить',
-            icon: Icons.close_rounded,
+            label: 'Отклонить',
+            nextStatus: 'REJECTED',
+            icon: Icons.cancel_outlined,
             isDanger: true,
           ),
         ];
       case 'ACCEPTED':
         return const [
           _OrderAction(
+            label: 'Готовить',
             nextStatus: 'COOKING',
-            label: 'Начать готовить',
-            icon: Icons.local_fire_department_outlined,
+            icon: Icons.restaurant_rounded,
             isPrimary: true,
-          ),
-          _OrderAction(
-            nextStatus: 'CANCELED',
-            label: 'Отменить',
-            icon: Icons.close_rounded,
-            isDanger: true,
           ),
         ];
       case 'COOKING':
-        return const [
+        return [
           _OrderAction(
+            label: isPickup ? 'Готов к выдаче' : 'Готов',
             nextStatus: 'READY',
-            label: 'Готово',
             icon: Icons.done_all_rounded,
             isPrimary: true,
           ),
-          _OrderAction(
-            nextStatus: 'CANCELED',
-            label: 'Отменить',
-            icon: Icons.close_rounded,
-            isDanger: true,
-          ),
         ];
-      case 'READY':
-        return const [
-          _OrderAction(
-            nextStatus: 'ON_THE_WAY',
-            label: 'Вызвать курьера',
-            icon: Icons.delivery_dining_rounded,
-            isPrimary: false,
-          ),
-          _OrderAction(
-            nextStatus: 'ON_THE_WAY',
-            label: 'Передать курьеру',
-            icon: Icons.delivery_dining_rounded,
-            isPrimary: true,
-          ),
-          _OrderAction(
-            nextStatus: 'CANCELED',
-            label: 'Отменить',
-            icon: Icons.close_rounded,
-            isDanger: true,
-          ),
-        ];
-      case 'ON_THE_WAY':
-        return const [];
       default:
         return const [];
     }
   }
 
-  String _statusLabel(String status) {
-    return _OrderStatusMeta.fromStatus(status).label;
+  void _showSnackBar(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
+    const bg = Color(0xFF030712);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF09111C),
-      appBar: widget.hideBottomBar
-          ? null
-          : AppBar(
-              backgroundColor: const Color(0xFF09111C),
-              elevation: 0,
-              centerTitle: true,
-              title: const Text(
-                'Заказы',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+      backgroundColor: bg,
       body: SafeArea(
         child: Column(
           children: [
             _OrdersHeader(
-              filters: _filters,
+              totalCount: _allOrders.length,
               selectedStatus: _selectedStatus,
-              onSelect: _selectStatus,
+              filters: _filters,
+              onFilterSelected: _selectFilter,
             ),
             Expanded(
-              child: _buildBody(),
+              child: RefreshIndicator(
+                color: const Color(0xFF489F2A),
+                backgroundColor: const Color(0xFF111827),
+                onRefresh: _refresh,
+                child: _buildBody(),
+              ),
             ),
           ],
         ),
@@ -455,147 +491,186 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const _OrdersLoadingState();
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 180),
+        children: const [
+          Center(child: CircularProgressIndicator(color: Color(0xFF489F2A))),
+        ],
+      );
     }
 
     if (_error != null) {
-      return _OrdersErrorState(
-        message: _error!,
-        onRetry: _loadOrders,
-      );
+      return _OrdersErrorState(message: _error!, onRetry: _loadOrders);
     }
 
     if (_visibleOrders.isEmpty) {
-      return _OrdersEmptyState(
-        statusCode: _selectedStatus,
-        onRefresh: _refresh,
-      );
+      return _OrdersEmptyState(selectedStatus: _selectedStatus);
     }
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-        itemCount: _visibleOrders.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final order = _visibleOrders[index];
-          final orderId = _orderId(order);
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(16, 14, 16, widget.hideBottomBar ? 120 : 24),
+      itemCount: _visibleOrders.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final order = _visibleOrders[index];
+        final isPickup = _isPickup(order);
 
-          return _RestaurantOrderCard(
-            orderNumber: _orderNumber(order),
-            customerName: _customerName(order),
-            itemsPreview: _itemsPreview(order),
-            total: _total(order),
-            timeText: _timeText(order),
-            status: _status(order),
-            isOverdue: _isOverdue(order),
-            blinkAnimation: _blinkController,
-            isUpdating: _updatingOrderIds.contains(orderId),
-            actions: _actionsForStatus(_status(order)),
-            onTap: () => _openOrder(order),
-            onActionTap: (action) => _changeStatus(order, action.nextStatus),
-          );
-        },
-      ),
+        return _RestaurantOrderCard(
+          orderNumber: _orderNumber(order),
+          status: _status(order),
+          isPickup: isPickup,
+          isIssuedPickup: _isIssuedPickup(order),
+          total: _money(order, 'total'),
+          subtotal: _money(order, 'subtotal'),
+          deliveryFee: _money(order, 'deliveryFee'),
+          paymentStatus: _string(order['paymentStatus']),
+          clientName: _clientName(order),
+          courierName: isPickup ? 'Клиент заберёт сам' : _courierName(order),
+          createdAt: _formatDateTime(_createdAt(order)),
+          promisedAt: _formatDateTime(_promisedAt(order)),
+          itemsCount: _itemsCount(order),
+          previewItems: _previewItems(order),
+          isUpdating: _isUpdating(order),
+          actions: _actionsFor(order),
+          blinkController: _blinkController,
+          onTap: () => _openOrder(order),
+          onActionTap: (action) {
+            if (action.nextStatus == 'REJECTED') {
+              _confirmReject(order);
+              return;
+            }
+
+            _changeStatus(order, action.nextStatus);
+          },
+        );
+      },
     );
   }
 }
 
 class _OrdersHeader extends StatelessWidget {
   const _OrdersHeader({
-    required this.filters,
+    required this.totalCount,
     required this.selectedStatus,
-    required this.onSelect,
+    required this.filters,
+    required this.onFilterSelected,
   });
 
-  final List<_OrderFilterItem> filters;
+  final int totalCount;
   final String selectedStatus;
-  final ValueChanged<String> onSelect;
+  final List<_OrderFilterItem> filters;
+  final ValueChanged<String> onFilterSelected;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFF489F2A),
-            Color(0xFF3C861F),
-          ],
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF489F2A), Color(0xFF3A7E21)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x33489F2A),
-            blurRadius: 24,
-            offset: Offset(0, 12),
+            color: Color(0x33000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         children: [
           Row(
-            children: const [
-              Expanded(
+            children: [
+              const Text(
+                'jetkiz',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
                 child: Text(
-                  'Заказы ресторана',
+                  'Заказы',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 19,
+                    fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              Icon(
-                Icons.volume_up_rounded,
-                color: Colors.white,
-                size: 20,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.20),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.receipt_long_rounded,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$totalCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 34,
+            height: 36,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: filters.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
                 final item = filters[index];
-                final isActive = item.code == selectedStatus;
+                final selected = selectedStatus == item.code;
 
-                return GestureDetector(
-                  onTap: () => onSelect(item.code),
+                return InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => onFilterSelected(item.code),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOut,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: isActive
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.18),
-                      ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
                     ),
-                    child: Center(
-                      child: Text(
-                        item.label,
-                        style: TextStyle(
-                          color: isActive
-                              ? const Color(0xFF489F2A)
-                              : Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.20),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      item.label,
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xFF489F2A)
+                            : Colors.white.withValues(alpha: 0.92),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -612,86 +687,86 @@ class _OrdersHeader extends StatelessWidget {
 class _RestaurantOrderCard extends StatelessWidget {
   const _RestaurantOrderCard({
     required this.orderNumber,
-    required this.customerName,
-    required this.itemsPreview,
-    required this.total,
-    required this.timeText,
     required this.status,
-    required this.isOverdue,
-    required this.blinkAnimation,
+    required this.isPickup,
+    required this.isIssuedPickup,
+    required this.total,
+    required this.subtotal,
+    required this.deliveryFee,
+    required this.paymentStatus,
+    required this.clientName,
+    required this.courierName,
+    required this.createdAt,
+    required this.promisedAt,
+    required this.itemsCount,
+    required this.previewItems,
     required this.isUpdating,
     required this.actions,
+    required this.blinkController,
     required this.onTap,
     required this.onActionTap,
   });
 
   final String orderNumber;
-  final String customerName;
-  final String itemsPreview;
-  final int total;
-  final String timeText;
   final String status;
-  final bool isOverdue;
-  final Animation<double> blinkAnimation;
+  final bool isPickup;
+  final bool isIssuedPickup;
+  final int total;
+  final int subtotal;
+  final int deliveryFee;
+  final String paymentStatus;
+  final String clientName;
+  final String courierName;
+  final String createdAt;
+  final String promisedAt;
+  final int itemsCount;
+  final List<_OrderPreviewItem> previewItems;
   final bool isUpdating;
   final List<_OrderAction> actions;
+  final AnimationController blinkController;
   final VoidCallback onTap;
   final ValueChanged<_OrderAction> onActionTap;
 
   @override
   Widget build(BuildContext context) {
-    final statusMeta = _OrderStatusMeta.fromStatus(status);
+    final meta = _OrderStatusMeta.fromStatus(
+      status,
+      isPickup: isPickup,
+      isIssuedPickup: isIssuedPickup,
+    );
+    final isNew = status == 'CREATED';
 
     return AnimatedBuilder(
-      animation: blinkAnimation,
+      animation: blinkController,
       builder: (context, child) {
-        final highlightOpacity =
-            isOverdue ? (0.22 + (blinkAnimation.value * 0.30)) : 0.0;
+        final borderAlpha = isNew
+            ? 0.35 + (blinkController.value * 0.35)
+            : 0.16;
 
-        return GestureDetector(
-          onTap: isUpdating ? null : onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF142234),
-                  Color(0xFF0B1421),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              border: Border.all(
-                color: isOverdue
-                    ? Color.lerp(
-                        const Color(0x33FF5E5E),
-                        const Color(0x99FF5E5E),
-                        highlightOpacity,
-                      )!
-                    : const Color(0xFF223247),
-              ),
-              boxShadow: [
-                const BoxShadow(
-                  color: Color(0x22000000),
-                  blurRadius: 16,
-                  offset: Offset(0, 8),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: meta.textColor.withValues(alpha: borderAlpha),
+                  width: isNew ? 1.4 : 1,
                 ),
-                if (isOverdue)
+                boxShadow: [
                   BoxShadow(
-                    color: Color.lerp(
-                      const Color(0x00FF5E5E),
-                      const Color(0x55FF5E5E),
-                      highlightOpacity,
-                    )!,
-                    blurRadius: 18,
-                    spreadRadius: 1,
+                    color: Colors.black.withValues(alpha: 0.26),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
                   ),
-              ],
+                ],
+              ),
+              child: child,
             ),
-            child: child,
           ),
         );
       },
@@ -700,102 +775,100 @@ class _RestaurantOrderCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const _CircleIcon(
-                icon: Icons.inventory_2_outlined,
-                iconColor: Color(0xFF70D74D),
-                backgroundColor: Color(0x1A70D74D),
-                borderColor: Color(0x3370D74D),
-              ),
+              _StatusBadge(meta: meta),
+              if (isPickup) ...[const SizedBox(width: 8), const _PickupBadge()],
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Заказ #$orderNumber',
+                  orderNumber == '—' ? 'Заказ' : 'Заказ $orderNumber',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
-              _StatusChip(meta: statusMeta),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              const Icon(
-                Icons.access_time,
-                color: Color(0xFF8A98AC),
-                size: 14,
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  timeText,
-                  style: const TextStyle(
-                    color: Color(0xFF8A98AC),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+              Text(
+                '$total ₸',
+                style: const TextStyle(
+                  color: Color(0xFF86EFAC),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-              if (isOverdue)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0x22FF5E5E),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0x55FF5E5E)),
-                  ),
-                  child: const Text(
-                    'Просрочен',
-                    style: TextStyle(
-                      color: Color(0xFFFF8A8A),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: const Color(0x33060C15),
-              border: Border.all(color: const Color(0xFF1E2B3D)),
-            ),
-            child: Column(
-              children: [
-                _OrderInfoRow(
-                  icon: Icons.person_outline,
-                  title: customerName,
-                  trailing: 'Подробнее →',
-                  trailingColor: const Color(0xFF63C73E),
+          Row(
+            children: [
+              Expanded(
+                child: _SmallInfoBlock(
+                  label: 'Клиент',
+                  value: clientName,
+                  icon: Icons.person_outline_rounded,
                 ),
-                const SizedBox(height: 10),
-                _OrderInfoRow(
-                  icon: Icons.receipt_long_outlined,
-                  title: itemsPreview,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SmallInfoBlock(
+                  label: isPickup ? 'Получение' : 'Курьер',
+                  value: courierName,
+                  icon: isPickup
+                      ? Icons.storefront_rounded
+                      : Icons.delivery_dining_rounded,
                 ),
-                const SizedBox(height: 10),
-                _OrderInfoRow(
-                  icon: Icons.payments_outlined,
-                  title: 'Итого',
-                  trailing: '$total ₸',
-                  trailingColor: const Color(0xFF70D74D),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _SmallInfoBlock(
+                  label: 'Создан',
+                  value: createdAt,
+                  icon: Icons.schedule_rounded,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SmallInfoBlock(
+                  label: 'Обещано к',
+                  value: promisedAt,
+                  icon: Icons.timer_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _MoneyRow(
+            subtotal: subtotal,
+            deliveryFee: deliveryFee,
+            total: total,
+            paymentStatus: paymentStatus,
+            isPickup: isPickup,
+          ),
+          const SizedBox(height: 12),
+          _ItemsPreview(itemsCount: itemsCount, items: previewItems),
           if (actions.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _OrderActionsSection(
-              actions: actions,
-              isUpdating: isUpdating,
-              onActionTap: onActionTap,
+            const SizedBox(height: 14),
+            Row(
+              children: actions.map((action) {
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: action == actions.last ? 0 : 8,
+                    ),
+                    child: _OrderActionButton(
+                      action: action,
+                      isLoading: isUpdating,
+                      onTap: () => onActionTap(action),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
           ],
         ],
@@ -804,229 +877,48 @@ class _RestaurantOrderCard extends StatelessWidget {
   }
 }
 
-class _OrderActionsSection extends StatelessWidget {
-  const _OrderActionsSection({
-    required this.actions,
-    required this.isUpdating,
-    required this.onActionTap,
-  });
-
-  final List<_OrderAction> actions;
-  final bool isUpdating;
-  final ValueChanged<_OrderAction> onActionTap;
+class _PickupBadge extends StatelessWidget {
+  const _PickupBadge();
 
   @override
   Widget build(BuildContext context) {
-    final primaryAction = actions.where((e) => e.isPrimary).toList();
-    final secondaryActions = actions.where((e) => !e.isPrimary).toList();
+    const color = Color(0xFFB0BEC5);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (primaryAction.isNotEmpty)
-          _PrimaryActionButton(
-            action: primaryAction.first,
-            isLoading: isUpdating,
-            onTap: isUpdating ? null : () => onActionTap(primaryAction.first),
-          ),
-        if (secondaryActions.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: secondaryActions.map((action) {
-              return _SecondaryActionButton(
-                action: action,
-                isLoading: isUpdating,
-                onTap: isUpdating ? null : () => onActionTap(action),
-              );
-            }).toList(),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _PrimaryActionButton extends StatelessWidget {
-  const _PrimaryActionButton({
-    required this.action,
-    required this.isLoading,
-    required this.onTap,
-  });
-
-  final _OrderAction action;
-  final bool isLoading;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final backgroundColor = action.isDanger
-        ? const Color(0xFF6C1E24)
-        : const Color(0xFF63C73E);
-
-    final foregroundColor =
-        action.isDanger ? const Color(0xFFFFB6BD) : const Color(0xFF0D1A0F);
-
-    return SizedBox(
-      height: 46,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: backgroundColor,
-          foregroundColor: foregroundColor,
-          disabledBackgroundColor: backgroundColor.withOpacity(0.55),
-          disabledForegroundColor: foregroundColor.withOpacity(0.8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-        icon: isLoading
-            ? SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
-                ),
-              )
-            : Icon(action.icon, size: 18),
-        label: Text(
-          isLoading ? 'Обновление...' : action.label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
-    );
-  }
-}
-
-class _SecondaryActionButton extends StatelessWidget {
-  const _SecondaryActionButton({
-    required this.action,
-    required this.isLoading,
-    required this.onTap,
-  });
-
-  final _OrderAction action;
-  final bool isLoading;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final borderColor =
-        action.isDanger ? const Color(0x66FF7C7C) : const Color(0x554D79FF);
-    final backgroundColor =
-        action.isDanger ? const Color(0x22FF7C7C) : const Color(0x334D79FF);
-    final foregroundColor =
-        action.isDanger ? const Color(0xFFFF9DA6) : const Color(0xFFAEBEFF);
-
-    return Material(
-      color: backgroundColor,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: isLoading ? null : onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isLoading)
-                SizedBox(
-                  width: 15,
-                  height: 15,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
-                  ),
-                )
-              else
-                Icon(
-                  action.icon,
-                  size: 16,
-                  color: foregroundColor,
-                ),
-              const SizedBox(width: 8),
-              Text(
-                action.label,
-                style: TextStyle(
-                  color: foregroundColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OrderInfoRow extends StatelessWidget {
-  const _OrderInfoRow({
-    required this.icon,
-    required this.title,
-    this.trailing,
-    this.trailingColor,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? trailing;
-  final Color? trailingColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: const Color(0xFF8A98AC), size: 16),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        if (trailing != null) ...[
-          const SizedBox(width: 8),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.storefront_rounded, size: 13, color: color),
+          SizedBox(width: 5),
           Text(
-            trailing!,
+            'Самовывоз',
             style: TextStyle(
-              color: trailingColor ?? const Color(0xFF9AA7B8),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
-      ],
+      ),
     );
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.meta});
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.meta});
 
   final _OrderStatusMeta meta;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: meta.backgroundColor,
         borderRadius: BorderRadius.circular(999),
@@ -1035,14 +927,14 @@ class _StatusChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(meta.icon, color: meta.textColor, size: 13),
-          const SizedBox(width: 4),
+          Icon(meta.icon, size: 14, color: meta.textColor),
+          const SizedBox(width: 5),
           Text(
             meta.label,
             style: TextStyle(
               color: meta.textColor,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
@@ -1051,58 +943,303 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _CircleIcon extends StatelessWidget {
-  const _CircleIcon({
+class _SmallInfoBlock extends StatelessWidget {
+  const _SmallInfoBlock({
+    required this.label,
+    required this.value,
     required this.icon,
-    required this.iconColor,
-    required this.backgroundColor,
-    required this.borderColor,
   });
 
+  final String label;
+  final String value;
   final IconData icon;
-  final Color iconColor;
-  final Color backgroundColor;
-  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
+    final safeValue = value.trim().isEmpty ? '—' : value.trim();
+
     return Container(
-      width: 34,
-      height: 34,
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: backgroundColor,
-        border: Border.all(color: borderColor),
+        color: const Color(0xFF0B1220),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF1F2937)),
       ),
-      child: Icon(icon, size: 18, color: iconColor),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF94A3B8)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  safeValue,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _OrdersLoadingState extends StatelessWidget {
-  const _OrdersLoadingState();
+class _MoneyRow extends StatelessWidget {
+  const _MoneyRow({
+    required this.subtotal,
+    required this.deliveryFee,
+    required this.total,
+    required this.paymentStatus,
+    required this.isPickup,
+  });
+
+  final int subtotal;
+  final int deliveryFee;
+  final int total;
+  final String paymentStatus;
+  final bool isPickup;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
-      children: List.generate(
-        4,
-        (index) => Container(
-          height: 220,
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            color: const Color(0xFF132131),
-            border: Border.all(color: const Color(0xFF223247)),
+    final paymentText = _paymentStatusLabel(paymentStatus);
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1220),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF1F2937)),
+      ),
+      child: Column(
+        children: [
+          _Line(label: 'Подытог', value: '$subtotal ₸'),
+          const SizedBox(height: 5),
+          _Line(
+            label: 'Доставка',
+            value: isPickup ? 'Самовывоз' : '$deliveryFee ₸',
           ),
-          child: const Center(
-            child: SizedBox(
-              width: 26,
-              height: 26,
-              child: CircularProgressIndicator(strokeWidth: 2.4),
+          const SizedBox(height: 5),
+          _Line(label: 'Оплата', value: paymentText),
+          const Divider(height: 16, color: Color(0xFF1F2937)),
+          _Line(label: 'Итого', value: '$total ₸', strong: true),
+        ],
+      ),
+    );
+  }
+
+  static String _paymentStatusLabel(String status) {
+    switch (status.trim().toUpperCase()) {
+      case 'PAID':
+        return 'Оплачено';
+      case 'PENDING':
+        return 'Ожидает оплаты';
+      case 'FAILED':
+        return 'Ошибка оплаты';
+      case 'REFUNDED':
+        return 'Возврат';
+      case 'CANCELED':
+      case 'CANCELLED':
+        return 'Отменено';
+      default:
+        return status.trim().isEmpty ? 'Не указано' : status;
+    }
+  }
+}
+
+class _Line extends StatelessWidget {
+  const _Line({required this.label, required this.value, this.strong = false});
+
+  final String label;
+  final String value;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: strong ? Colors.white : const Color(0xFF94A3B8),
+              fontSize: strong ? 14 : 12,
+              fontWeight: strong ? FontWeight.w900 : FontWeight.w600,
             ),
+          ),
+        ),
+        Text(
+          value,
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: strong ? const Color(0xFF86EFAC) : Colors.white,
+            fontSize: strong ? 15 : 12,
+            fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ItemsPreview extends StatelessWidget {
+  const _ItemsPreview({required this.itemsCount, required this.items});
+
+  final int itemsCount;
+  final List<_OrderPreviewItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleItems = items.take(3).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1220),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF1F2937)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.restaurant_menu_rounded,
+                size: 16,
+                color: Color(0xFF94A3B8),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  itemsCount > 0
+                      ? 'Позиции заказа: $itemsCount'
+                      : 'Позиции заказа',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (visibleItems.isEmpty)
+            const Text(
+              'Позиции не указаны',
+              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+            )
+          else
+            ...visibleItems.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFCBD5E1),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${item.quantity} × ${item.price} ₸',
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (items.length > 3)
+            Text(
+              'Ещё ${items.length - 3} поз.',
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrderActionButton extends StatelessWidget {
+  const _OrderActionButton({
+    required this.action,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  final _OrderAction action;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = action.isDanger
+        ? const Color(0xFFDC2626)
+        : action.isPrimary
+        ? const Color(0xFF489F2A)
+        : const Color(0xFF1F2937);
+
+    return SizedBox(
+      height: 44,
+      child: ElevatedButton.icon(
+        onPressed: isLoading ? null : onTap,
+        icon: isLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Icon(action.icon, size: 18),
+        label: Text(
+          isLoading ? 'Обновление...' : action.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bg,
+          disabledBackgroundColor: bg.withValues(alpha: 0.55),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
       ),
@@ -1111,138 +1248,123 @@ class _OrdersLoadingState extends StatelessWidget {
 }
 
 class _OrdersErrorState extends StatelessWidget {
-  const _OrdersErrorState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _OrdersErrorState({required this.message, required this.onRetry});
 
   final String message;
   final Future<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              color: Color(0xFFFF8A8A),
-              size: 40,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: onRetry,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF489F2A),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Повторить'),
-            ),
-          ],
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 140, 24, 120),
+      children: [
+        const Icon(
+          Icons.error_outline_rounded,
+          color: Color(0xFFEF4444),
+          size: 46,
         ),
-      ),
+        const SizedBox(height: 14),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: ElevatedButton(
+            onPressed: onRetry,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF489F2A),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Повторить'),
+          ),
+        ),
+      ],
     );
   }
 }
 
 class _OrdersEmptyState extends StatelessWidget {
-  const _OrdersEmptyState({
-    required this.statusCode,
-    required this.onRefresh,
-  });
+  const _OrdersEmptyState({required this.selectedStatus});
 
-  final String statusCode;
-  final Future<void> Function() onRefresh;
+  final String selectedStatus;
 
   @override
   Widget build(BuildContext context) {
-    final text = statusCode == 'ALL'
+    final text = selectedStatus == 'ALL'
         ? 'Заказов пока нет'
-        : 'По выбранному статусу заказов нет';
+        : 'Заказов с выбранным статусом нет';
 
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        children: [
-          const SizedBox(height: 80),
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              color: const Color(0xFF111C2B),
-              border: Border.all(color: const Color(0xFF223247)),
-            ),
-            child: const Column(
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  color: Color(0xFF489F2A),
-                  size: 46,
-                ),
-                SizedBox(height: 12),
-              ],
-            ),
+    final subtitle = selectedStatus == 'ALL'
+        ? 'Новые заказы появятся на этом экране'
+        : 'Попробуйте выбрать другой фильтр';
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 140, 24, 120),
+      children: [
+        const Icon(
+          Icons.receipt_long_outlined,
+          color: Color(0xFF6B7280),
+          size: 54,
+        ),
+        const SizedBox(height: 14),
+        Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(height: 16),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Потяни вниз для обновления',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
+        ),
+      ],
     );
   }
 }
 
 class _OrderFilterItem {
-  const _OrderFilterItem({
-    required this.code,
-    required this.label,
-  });
+  const _OrderFilterItem({required this.code, required this.label});
 
   final String code;
   final String label;
 }
 
+class _OrderPreviewItem {
+  const _OrderPreviewItem({
+    required this.title,
+    required this.quantity,
+    required this.price,
+  });
+
+  final String title;
+  final int quantity;
+  final int price;
+}
+
 class _OrderAction {
   const _OrderAction({
-    required this.nextStatus,
     required this.label,
+    required this.nextStatus,
     required this.icon,
     this.isPrimary = false,
     this.isDanger = false,
   });
 
-  final String nextStatus;
   final String label;
+  final String nextStatus;
   final IconData icon;
   final bool isPrimary;
   final bool isDanger;
@@ -1263,57 +1385,82 @@ class _OrderStatusMeta {
   final Color backgroundColor;
   final Color borderColor;
 
-  static _OrderStatusMeta fromStatus(String status) {
-    switch (status) {
+  static _OrderStatusMeta fromStatus(
+    String status, {
+    required bool isPickup,
+    required bool isIssuedPickup,
+  }) {
+    final normalizedStatus = status.trim().toUpperCase();
+
+    if (isPickup && isIssuedPickup) {
+      return const _OrderStatusMeta(
+        label: 'Выдан',
+        icon: Icons.verified_rounded,
+        textColor: Color(0xFF7CFF9E),
+        backgroundColor: Color(0x1A7CFF9E),
+        borderColor: Color(0x337CFF9E),
+      );
+    }
+
+    switch (normalizedStatus) {
       case 'CREATED':
         return const _OrderStatusMeta(
           label: 'Новый',
-          icon: Icons.fiber_new,
-          textColor: Color(0xFF66D7FF),
-          backgroundColor: Color(0x1A66D7FF),
-          borderColor: Color(0x3366D7FF),
+          icon: Icons.fiber_new_rounded,
+          textColor: Color(0xFF60A5FA),
+          backgroundColor: Color(0x1A60A5FA),
+          borderColor: Color(0x3360A5FA),
         );
       case 'ACCEPTED':
         return const _OrderStatusMeta(
           label: 'Принят',
           icon: Icons.check_circle_outline,
-          textColor: Color(0xFF00E676),
-          backgroundColor: Color(0x1A00E676),
-          borderColor: Color(0x3300E676),
+          textColor: Color(0xFF7CFF9E),
+          backgroundColor: Color(0x1A7CFF9E),
+          borderColor: Color(0x337CFF9E),
         );
       case 'COOKING':
         return const _OrderStatusMeta(
           label: 'Готовится',
-          icon: Icons.local_fire_department_outlined,
+          icon: Icons.restaurant_rounded,
           textColor: Color(0xFFFFC857),
           backgroundColor: Color(0x1AFFC857),
           borderColor: Color(0x33FFC857),
         );
       case 'READY':
-        return const _OrderStatusMeta(
-          label: 'Готов',
-          icon: Icons.done_all,
-          textColor: Color(0xFFB46CFF),
-          backgroundColor: Color(0x1AB46CFF),
-          borderColor: Color(0x33B46CFF),
+        return _OrderStatusMeta(
+          label: isPickup ? 'Готов к выдаче' : 'Готов',
+          icon: Icons.done_all_rounded,
+          textColor: const Color(0xFFB46CFF),
+          backgroundColor: const Color(0x1AB46CFF),
+          borderColor: const Color(0x33B46CFF),
         );
       case 'ON_THE_WAY':
         return const _OrderStatusMeta(
           label: 'В пути',
-          icon: Icons.delivery_dining,
+          icon: Icons.delivery_dining_rounded,
           textColor: Color(0xFFFF9E57),
           backgroundColor: Color(0x1AFF9E57),
           borderColor: Color(0x33FF9E57),
         );
       case 'DELIVERED':
+        return _OrderStatusMeta(
+          label: isPickup ? 'Выдан' : 'Доставлен',
+          icon: Icons.verified_rounded,
+          textColor: const Color(0xFF7CFF9E),
+          backgroundColor: const Color(0x1A7CFF9E),
+          borderColor: const Color(0x337CFF9E),
+        );
+      case 'REJECTED':
         return const _OrderStatusMeta(
-          label: 'Доставлен',
-          icon: Icons.verified,
-          textColor: Color(0xFF7CFF9E),
-          backgroundColor: Color(0x1A7CFF9E),
-          borderColor: Color(0x337CFF9E),
+          label: 'Отклонён',
+          icon: Icons.cancel_outlined,
+          textColor: Color(0xFFFF7C7C),
+          backgroundColor: Color(0x1AFF7C7C),
+          borderColor: Color(0x33FF7C7C),
         );
       case 'CANCELED':
+      case 'CANCELLED':
         return const _OrderStatusMeta(
           label: 'Отменён',
           icon: Icons.cancel_outlined,
@@ -1321,18 +1468,10 @@ class _OrderStatusMeta {
           backgroundColor: Color(0x1AFF7C7C),
           borderColor: Color(0x33FF7C7C),
         );
-      case 'PAID':
-        return const _OrderStatusMeta(
-          label: 'Оплачен',
-          icon: Icons.payments_outlined,
-          textColor: Color(0xFF67E8F9),
-          backgroundColor: Color(0x1A67E8F9),
-          borderColor: Color(0x3367E8F9),
-        );
       default:
         return const _OrderStatusMeta(
           label: 'Неизвестно',
-          icon: Icons.help_outline,
+          icon: Icons.help_outline_rounded,
           textColor: Color(0xFFB0BEC5),
           backgroundColor: Color(0x1AB0BEC5),
           borderColor: Color(0x33B0BEC5),

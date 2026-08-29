@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/session/restaurant_context.dart';
+import 'package:jetkiz_restaurant/core/session/session_manager.dart';
+
 import '../../data/restaurant_menu_api.dart';
 import '../../domain/restaurant_menu_models.dart';
 import '../widgets/menu_item_card.dart';
@@ -30,6 +33,142 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     _loadMenu();
   }
 
+  String? _readId(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+
+    return text;
+  }
+
+  bool _looksLikeRestaurantPayload(Map<String, dynamic> data) {
+    return data.containsKey('nameRu') ||
+        data.containsKey('nameKk') ||
+        data.containsKey('slug') ||
+        data.containsKey('workingHours') ||
+        data.containsKey('status') ||
+        data.containsKey('isInApp');
+  }
+
+  String? _resolveRestaurantId(Map<String, dynamic> data) {
+    final fromContext = resolveRestaurantIdFromMe(data)?.trim();
+
+    if (fromContext != null && fromContext.isNotEmpty) {
+      return fromContext;
+    }
+
+    final directRestaurantId = _readId(data['restaurantId']);
+
+    if (directRestaurantId != null) {
+      return directRestaurantId;
+    }
+
+    if (_looksLikeRestaurantPayload(data)) {
+      final directId = _readId(data['id']);
+
+      if (directId != null) {
+        return directId;
+      }
+    }
+
+    final restaurant = data['restaurant'];
+
+    if (restaurant is Map) {
+      final id = _readId(restaurant['id']) ?? _readId(restaurant['restaurantId']);
+
+      if (id != null) {
+        return id;
+      }
+    }
+
+    final ownedRestaurant = data['ownedRestaurant'];
+
+    if (ownedRestaurant is Map) {
+      final id =
+          _readId(ownedRestaurant['id']) ?? _readId(ownedRestaurant['restaurantId']);
+
+      if (id != null) {
+        return id;
+      }
+    }
+
+    final restaurantProfile = data['restaurantProfile'];
+
+    if (restaurantProfile is Map) {
+      final id = _readId(restaurantProfile['id']) ??
+          _readId(restaurantProfile['restaurantId']);
+
+      if (id != null) {
+        return id;
+      }
+    }
+
+    final restaurants = data['restaurants'];
+
+    if (restaurants is List && restaurants.isNotEmpty) {
+      for (final item in restaurants) {
+        if (item is Map) {
+          final id = _readId(item['id']) ?? _readId(item['restaurantId']);
+
+          if (id != null) {
+            return id;
+          }
+        }
+      }
+    }
+
+    final accesses = data['restaurantAccesses'];
+
+    if (accesses is List && accesses.isNotEmpty) {
+      for (final access in accesses) {
+        if (access is! Map) {
+          continue;
+        }
+
+        final restaurantId = _readId(access['restaurantId']);
+
+        if (restaurantId != null) {
+          return restaurantId;
+        }
+
+        final restaurantFromAccess = access['restaurant'];
+
+        if (restaurantFromAccess is Map) {
+          final id = _readId(restaurantFromAccess['id']) ??
+              _readId(restaurantFromAccess['restaurantId']);
+
+          if (id != null) {
+            return id;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  Future<String> _getRestaurantId() async {
+    final sessionRestaurantId = _readId(SessionManager.restaurantId);
+
+    if (sessionRestaurantId != null) {
+      return sessionRestaurantId;
+    }
+
+    final me = await _api.getRestaurantMe();
+    final restaurantId = _resolveRestaurantId(me);
+
+    if (restaurantId == null || restaurantId.trim().isEmpty) {
+      throw Exception('У аккаунта не найден ресторан');
+    }
+
+    final normalizedRestaurantId = restaurantId.trim();
+    SessionManager.restaurantId = normalizedRestaurantId;
+
+    return normalizedRestaurantId;
+  }
+
   Future<void> _loadMenu() async {
     try {
       setState(() {
@@ -37,16 +176,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         _error = null;
       });
 
-      final me = await _api.getRestaurantMe();
-
-      final restaurantId = me['id']?.toString() ??
-          me['restaurantId']?.toString() ??
-          me['restaurant']?['id']?.toString();
-
-      if (restaurantId == null || restaurantId.isEmpty) {
-        throw Exception('Не найден restaurantId');
-      }
-
+      final restaurantId = await _getRestaurantId();
       final response = await _api.getMenu(restaurantId);
       final parsed = RestaurantMenuData.fromJson(response);
 
@@ -56,16 +186,33 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         _restaurantId = restaurantId;
         _categories = parsed.categories;
         _items = parsed.items;
+        _selectedCategory = _normalizeSelectedCategory(
+          selected: _selectedCategory,
+          categories: parsed.categories,
+        );
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = e.toString().replaceFirst('Exception: ', '').trim();
         _isLoading = false;
       });
     }
+  }
+
+  String _normalizeSelectedCategory({
+    required String selected,
+    required List<RestaurantMenuCategory> categories,
+  }) {
+    if (selected == 'Все') {
+      return selected;
+    }
+
+    final exists = categories.any((category) => category.title == selected);
+
+    return exists ? selected : 'Все';
   }
 
   List<RestaurantMenuItem> get _filteredItems {
@@ -89,7 +236,10 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
 
   Future<void> _toggleAvailability(RestaurantMenuItem item) async {
     final restaurantId = _restaurantId;
-    if (restaurantId == null || restaurantId.isEmpty) return;
+    if (restaurantId == null || restaurantId.isEmpty) {
+      _showMessage('Не найден ресторан');
+      return;
+    }
 
     final newValue = !item.isAvailable;
 
@@ -111,19 +261,16 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-          ),
-        ),
-      );
+      _showMessage(e.toString().replaceFirst('Exception: ', '').trim());
     }
   }
 
   Future<void> _deleteItem(RestaurantMenuItem item) async {
     final restaurantId = _restaurantId;
-    if (restaurantId == null || restaurantId.isEmpty) return;
+    if (restaurantId == null || restaurantId.isEmpty) {
+      _showMessage('Не найден ресторан');
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -215,19 +362,16 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-          ),
-        ),
-      );
+      _showMessage(e.toString().replaceFirst('Exception: ', '').trim());
     }
   }
 
   Future<void> _openCreateItem() async {
     final restaurantId = _restaurantId;
-    if (restaurantId == null || restaurantId.isEmpty) return;
+    if (restaurantId == null || restaurantId.isEmpty) {
+      _showMessage('Не найден ресторан');
+      return;
+    }
 
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -244,7 +388,10 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
 
   Future<void> _openCreateCategory() async {
     final restaurantId = _restaurantId;
-    if (restaurantId == null || restaurantId.isEmpty) return;
+    if (restaurantId == null || restaurantId.isEmpty) {
+      _showMessage('Не найден ресторан');
+      return;
+    }
 
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -261,6 +408,11 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
   }
 
   void _openCreateActions() {
+    if (_restaurantId == null || _restaurantId!.trim().isEmpty) {
+      _showMessage('Не найден ресторан');
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -282,7 +434,10 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
 
   Future<void> _openEditItem(RestaurantMenuItem item) async {
     final restaurantId = _restaurantId;
-    if (restaurantId == null || restaurantId.isEmpty) return;
+    if (restaurantId == null || restaurantId.isEmpty) {
+      _showMessage('Не найден ресторан');
+      return;
+    }
 
     final updated = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -296,6 +451,20 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     if (updated == true) {
       await _loadMenu();
     }
+  }
+
+  void _showMessage(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message.trim().isEmpty ? 'Ошибка' : message.trim(),
+          ),
+        ),
+      );
   }
 
   @override

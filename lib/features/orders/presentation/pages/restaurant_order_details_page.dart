@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
+import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
 import 'package:jetkiz_restaurant/features/orders/domain/restaurant_order_details.dart';
 
 // JETKIZ RESTAURANT APP
@@ -7,12 +9,11 @@ import 'package:jetkiz_restaurant/features/orders/domain/restaurant_order_detail
 //
 // BACKEND:
 // - GET /orders/:id
+// - POST /orders/:id/verify-pickup
 //
-// IMPORTANT:
-// This screen is intentionally kept read-only now.
-// User request was only:
-// "нажимая на заказ открыть подробнее"
-// So no extra status-change logic is added here.
+// PICKUP:
+// Restaurant issues pickup orders only through client pickup code.
+// Never mark PICKUP as DELIVERED through regular status update from this screen.
 
 class RestaurantOrderDetailsPage extends StatefulWidget {
   const RestaurantOrderDetailsPage({
@@ -28,12 +29,17 @@ class RestaurantOrderDetailsPage extends StatefulWidget {
 }
 
 class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage> {
-  final ApiClient _apiClient = ApiClient();
+  late final ApiClient _apiClient;
+  late final RestaurantOrdersApi _ordersApi;
+
   Future<RestaurantOrderDetails>? _orderFuture;
+  bool _isVerifyingPickup = false;
 
   @override
   void initState() {
     super.initState();
+    _apiClient = ApiClient();
+    _ordersApi = RestaurantOrdersApi(apiClient: _apiClient);
     _loadOrder();
   }
 
@@ -64,6 +70,91 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
     throw Exception('Некорректный ответ по заказу');
   }
 
+  Future<void> _showPickupCodeSheet(RestaurantOrderDetails order) async {
+    final result = await showModalBottomSheet<_PickupIssueResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return _PickupCodeBottomSheet(
+          cleanErrorMessage: _cleanErrorMessage,
+          onSubmit: (pickupCode) async {
+            if (_isVerifyingPickup) {
+              return _PickupIssueResult.none;
+            }
+
+            if (mounted) {
+              setState(() {
+                _isVerifyingPickup = true;
+              });
+            } else {
+              _isVerifyingPickup = true;
+            }
+
+            try {
+              await _ordersApi.verifyPickup(
+                id: order.id,
+                pickupCode: pickupCode,
+              );
+
+              return _PickupIssueResult.issued;
+            } catch (error) {
+              if (_isAlreadyIssuedPickupError(error)) {
+                return _PickupIssueResult.alreadyIssued;
+              }
+
+              rethrow;
+            } finally {
+              if (mounted) {
+                setState(() {
+                  _isVerifyingPickup = false;
+                });
+              } else {
+                _isVerifyingPickup = false;
+              }
+            }
+          },
+        );
+      },
+    );
+
+    if (!mounted || result == null || result == _PickupIssueResult.none) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result == _PickupIssueResult.alreadyIssued
+              ? 'Заказ уже выдан'
+              : 'Заказ выдан',
+        ),
+        backgroundColor: const Color(0xFF489F2A),
+      ),
+    );
+
+    _loadOrder();
+  }
+  String _cleanErrorMessage(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+
+    if (message.isEmpty) {
+      return 'Не удалось подтвердить выдачу';
+    }
+
+    return message;
+  }
+
+  bool _isAlreadyIssuedPickupError(Object error) {
+    final message = _cleanErrorMessage(error).toLowerCase();
+
+    return message.contains('current status: delivered') ||
+        message.contains('already delivered') ||
+        message.contains('already verified') ||
+        message.contains('уже выдан') ||
+        message.contains('уже доставлен');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -92,7 +183,9 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
 
             if (snapshot.hasError) {
               return _DetailsErrorState(
-                message: snapshot.error.toString().replaceFirst('Exception: ', ''),
+                message: snapshot.error
+                    .toString()
+                    .replaceFirst('Exception: ', ''),
                 onRetry: _loadOrder,
               );
             }
@@ -128,9 +221,15 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                                 ),
                               ),
                             ),
-                            _StatusBadge(status: order.status),
+                            _StatusBadge(
+                              status: order.status,
+                              isPickup: order.isPickup,
+                              isIssuedPickup: order.isIssuedPickup,
+                            ),
                           ],
                         ),
+                        const SizedBox(height: 12),
+                        _FulfillmentBadge(isPickup: order.isPickup),
                         const SizedBox(height: 14),
                         _InfoRow(label: 'ID', value: order.id),
                         _InfoRow(
@@ -147,7 +246,9 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                         ),
                         _InfoRow(
                           label: 'Доставка',
-                          value: '${order.deliveryFee} ₸',
+                          value: order.isPickup
+                              ? 'Самовывоз'
+                              : '${order.deliveryFee} ₸',
                         ),
                         _InfoRow(
                           label: 'Итого',
@@ -158,10 +259,22 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                             label: 'Создан',
                             value: _formatDateTime(order.createdAt!.toLocal()),
                           ),
+                        if (order.readyAt != null)
+                          _InfoRow(
+                            label: order.isPickup ? 'Готов к выдаче' : 'Готов',
+                            value: _formatDateTime(order.readyAt!.toLocal()),
+                          ),
                         if (order.promisedAt != null)
                           _InfoRow(
                             label: 'Обещано к',
                             value: _formatDateTime(order.promisedAt!.toLocal()),
+                          ),
+                        if (order.pickupCodeVerifiedAt != null)
+                          _InfoRow(
+                            label: 'Выдан',
+                            value: _formatDateTime(
+                              order.pickupCodeVerifiedAt!.toLocal(),
+                            ),
                           ),
                       ],
                     ),
@@ -185,25 +298,42 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                                   ? order.user!.phone!.trim()
                                   : 'Не указан'),
                         ),
-                        _InfoRow(
-                          label: 'Оставить у двери',
-                          value: order.leaveAtDoor ? 'Да' : 'Нет',
-                        ),
+                        if (order.isPickup)
+                          const _InfoRow(
+                            label: 'Получение',
+                            value: 'Клиент заберёт сам',
+                          )
+                        else ...[
+                          _InfoRow(
+                            label: 'Оставить у двери',
+                            value: order.leaveAtDoor ? 'Да' : 'Нет',
+                          ),
+                          if ((order.address ?? '').trim().isNotEmpty)
+                            _InfoRow(
+                              label: 'Адрес',
+                              value: order.address!.trim(),
+                            ),
+                        ],
                         if ((order.comment ?? '').trim().isNotEmpty)
                           _InfoRow(
                             label: 'Комментарий',
                             value: order.comment!.trim(),
                           ),
-                        if ((order.address ?? '').trim().isNotEmpty)
-                          _InfoRow(
-                            label: 'Адрес',
-                            value: order.address!.trim(),
-                          ),
                       ],
                     ),
                   ),
+                  if (order.isPickup) ...[
+                    const SizedBox(height: 14),
+                    _PickupIssueCard(
+                      order: order,
+                      onIssuePressed:
+                          order.isReadyForPickupIssue && !_isVerifyingPickup
+                          ? () => _showPickupCodeSheet(order)
+                          : null,
+                    ),
+                  ],
                   const SizedBox(height: 14),
-                  if (order.courier != null) ...[
+                  if (order.isDelivery && order.courier != null) ...[
                     _SectionCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,7 +346,9 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                           ),
                           _InfoRow(
                             label: 'Телефон',
-                            value: (order.courier!.phone ?? '').trim().isNotEmpty
+                            value: (order.courier!.phone ?? '')
+                                    .trim()
+                                    .isNotEmpty
                                 ? order.courier!.phone!.trim()
                                 : 'Не указан',
                           ),
@@ -261,6 +393,368 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   }
 
   static String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+enum _PickupIssueResult {
+  none,
+  issued,
+  alreadyIssued,
+}
+
+class _PickupCodeBottomSheet extends StatefulWidget {
+  const _PickupCodeBottomSheet({
+    required this.onSubmit,
+    required this.cleanErrorMessage,
+  });
+
+  final Future<_PickupIssueResult> Function(String pickupCode) onSubmit;
+  final String Function(Object error) cleanErrorMessage;
+
+  @override
+  State<_PickupCodeBottomSheet> createState() => _PickupCodeBottomSheetState();
+}
+
+class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
+  final TextEditingController _controller = TextEditingController();
+
+  bool _isSubmitting = false;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_isSubmitting) return;
+
+    final pickupCode = _controller.text.trim();
+
+    if (pickupCode.isEmpty) {
+      setState(() {
+        _errorText = 'Введите код клиента';
+      });
+      return;
+    }
+
+    if (pickupCode.length != 4) {
+      setState(() {
+        _errorText = 'Код должен состоять из 4 цифр';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _errorText = null;
+    });
+
+    try {
+      final result = await widget.onSubmit(pickupCode);
+
+      if (!mounted) return;
+
+      if (result == _PickupIssueResult.issued ||
+          result == _PickupIssueResult.alreadyIssued) {
+        Navigator.of(context).pop(result);
+        return;
+      }
+
+      setState(() {
+        _isSubmitting = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isSubmitting = false;
+        _errorText = widget.cleanErrorMessage(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+        decoration: const BoxDecoration(
+          color: Color(0xFF131E2D),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(24),
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Подтвердить выдачу',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Введите 4-значный код, который клиент показывает при получении заказа.',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _controller,
+                enabled: !_isSubmitting,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 6,
+                ),
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: '0000',
+                  hintStyle: const TextStyle(
+                    color: Colors.white24,
+                    letterSpacing: 6,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFF1A2738),
+                  errorText: _errorText,
+                  errorStyle: const TextStyle(
+                    color: Color(0xFFFF8A8A),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF26364A),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF26364A),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF70D74D),
+                      width: 1.4,
+                    ),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFFF8A8A),
+                    ),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFFF8A8A),
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF489F2A),
+                    disabledBackgroundColor: Colors.white12,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Подтвердить',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+class _PickupIssueCard extends StatelessWidget {
+  const _PickupIssueCard({
+    required this.order,
+    required this.onIssuePressed,
+  });
+
+  final RestaurantOrderDetails order;
+  final VoidCallback? onIssuePressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = order.isIssuedPickup
+        ? 'Заказ выдан'
+        : order.isReadyForPickupIssue
+            ? 'Готов к выдаче'
+            : 'Самовывоз';
+
+    final description = order.isIssuedPickup
+        ? 'Код клиента подтверждён. Заказ закрыт как выданный.'
+        : order.isReadyForPickupIssue
+            ? 'Попросите клиента назвать или показать код получения.'
+            : 'Клиент заберёт заказ сам. Курьер для этого заказа не нужен.';
+
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.storefront,
+                color: Color(0xFF70D74D),
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            description,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              height: 1.35,
+            ),
+          ),
+          if (onIssuePressed != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: onIssuePressed,
+                icon: const Icon(Icons.password),
+                label: const Text(
+                  'Выдать заказ',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF489F2A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FulfillmentBadge extends StatelessWidget {
+  const _FulfillmentBadge({
+    required this.isPickup,
+  });
+
+  final bool isPickup;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = isPickup ? 'Самовывоз' : 'Доставка';
+    final icon = isPickup ? Icons.storefront : Icons.delivery_dining;
+
+    final color = isPickup
+        ? const Color(0xFFB0BEC5) // серый для самовывоза
+        : const Color(0xFF66D7FF); // синий для доставки
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SectionCard extends StatelessWidget {
@@ -453,13 +947,21 @@ class _DetailsErrorState extends StatelessWidget {
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({
     required this.status,
+    required this.isPickup,
+    required this.isIssuedPickup,
   });
 
   final String status;
+  final bool isPickup;
+  final bool isIssuedPickup;
 
   @override
   Widget build(BuildContext context) {
-    final meta = _OrderStatusMeta.fromStatus(status);
+    final meta = _OrderStatusMeta.fromStatus(
+      status,
+      isPickup: isPickup,
+      isIssuedPickup: isIssuedPickup,
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -502,8 +1004,24 @@ class _OrderStatusMeta {
   final Color backgroundColor;
   final Color borderColor;
 
-  static _OrderStatusMeta fromStatus(String status) {
-    switch (status) {
+  static _OrderStatusMeta fromStatus(
+    String status, {
+    required bool isPickup,
+    required bool isIssuedPickup,
+  }) {
+    final normalizedStatus = status.trim().toUpperCase();
+
+    if (isPickup && isIssuedPickup) {
+      return const _OrderStatusMeta(
+        label: 'Выдан',
+        icon: Icons.verified,
+        textColor: Color(0xFF7CFF9E),
+        backgroundColor: Color(0x1A7CFF9E),
+        borderColor: Color(0x337CFF9E),
+      );
+    }
+
+    switch (normalizedStatus) {
       case 'CREATED':
         return const _OrderStatusMeta(
           label: 'Новый',
@@ -529,12 +1047,12 @@ class _OrderStatusMeta {
           borderColor: Color(0x33FFC857),
         );
       case 'READY':
-        return const _OrderStatusMeta(
-          label: 'Готов',
+        return _OrderStatusMeta(
+          label: isPickup ? 'Готов к выдаче' : 'Готов',
           icon: Icons.done_all,
-          textColor: Color(0xFFB46CFF),
-          backgroundColor: Color(0x1AB46CFF),
-          borderColor: Color(0x33B46CFF),
+          textColor: const Color(0xFFB46CFF),
+          backgroundColor: const Color(0x1AB46CFF),
+          borderColor: const Color(0x33B46CFF),
         );
       case 'ON_THE_WAY':
         return const _OrderStatusMeta(
@@ -545,12 +1063,12 @@ class _OrderStatusMeta {
           borderColor: Color(0x33FF9E57),
         );
       case 'DELIVERED':
-        return const _OrderStatusMeta(
-          label: 'Доставлен',
+        return _OrderStatusMeta(
+          label: isPickup ? 'Выдан' : 'Доставлен',
           icon: Icons.verified,
-          textColor: Color(0xFF7CFF9E),
-          backgroundColor: Color(0x1A7CFF9E),
-          borderColor: Color(0x337CFF9E),
+          textColor: const Color(0xFF7CFF9E),
+          backgroundColor: const Color(0x1A7CFF9E),
+          borderColor: const Color(0x337CFF9E),
         );
       case 'CANCELED':
         return const _OrderStatusMeta(
@@ -571,3 +1089,4 @@ class _OrderStatusMeta {
     }
   }
 }
+

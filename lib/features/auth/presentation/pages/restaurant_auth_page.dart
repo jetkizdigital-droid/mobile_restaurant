@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'restaurant_sms_page.dart';
 
@@ -167,9 +167,11 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
 
       try {
         await _authApi.requestCode(phone: normalizedPhone);
-      } catch (e, st) {
-        debugPrint('ERROR in _submitLogin/requestCode: $e');
-        debugPrintStack(stackTrace: st);
+      } catch (e) {
+        if (!mounted) return;
+        final message = e.toString().replaceFirst('Exception: ', '').trim();
+        _showError(message.isEmpty ? 'Не удалось отправить SMS-код' : message);
+        return;
       }
 
       if (!mounted) return;
@@ -215,9 +217,11 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
 
       try {
         await _authApi.requestCode(phone: normalizedPhone);
-      } catch (e, st) {
-        debugPrint('ERROR in _submitRegister/requestCode: $e');
-        debugPrintStack(stackTrace: st);
+      } catch (e) {
+        if (!mounted) return;
+        final message = e.toString().replaceFirst('Exception: ', '').trim();
+        _showError(message.isEmpty ? 'Не удалось отправить SMS-код' : message);
+        return;
       }
 
       if (!mounted) return;
@@ -635,10 +639,7 @@ class _TimeField extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
 
-  const _TimeField({
-    required this.text,
-    required this.onTap,
-  });
+  const _TimeField({required this.text, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -667,10 +668,7 @@ class _TimeField extends StatelessWidget {
                 style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
             ),
-            const Icon(
-              Icons.keyboard_arrow_down,
-              color: Color(0xFF8E9AAF),
-            ),
+            const Icon(Icons.keyboard_arrow_down, color: Color(0xFF8E9AAF)),
           ],
         ),
       ),
@@ -682,10 +680,7 @@ class _GreenButton extends StatelessWidget {
   final String text;
   final VoidCallback? onPressed;
 
-  const _GreenButton({
-    required this.text,
-    required this.onPressed,
-  });
+  const _GreenButton({required this.text, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -696,9 +691,9 @@ class _GreenButton extends StatelessWidget {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF489F2A),
-          disabledBackgroundColor: const Color(0xFF489F2A).withValues(
-            alpha: 0.6,
-          ),
+          disabledBackgroundColor: const Color(
+            0xFF489F2A,
+          ).withValues(alpha: 0.6),
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -707,10 +702,7 @@ class _GreenButton extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),
     );

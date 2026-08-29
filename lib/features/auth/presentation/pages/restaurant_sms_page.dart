@@ -7,8 +7,12 @@
 // 3. verify code
 // 4. if isNewUser == true -> backend finishes registration
 // 5. if isNewUser == false -> normal login
+// 6. after successful login/register -> register FCM token for restaurant app
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
+import 'package:jetkiz_restaurant/core/session/restaurant_context.dart';
 import 'package:jetkiz_restaurant/core/session/session_manager.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/pages/restaurant_shell_page.dart';
@@ -44,71 +48,67 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
 
   Future<void> _verifyCode() async {
     final code = _codeController.text.trim();
-    debugPrint('[_verifyCode] code: $code');
 
     if (code.isEmpty) {
       _showError('Введите код');
-      debugPrint('[_verifyCode] код пустой');
+      return;
+    }
+
+    if (_isLoading) {
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final normalizedPhone = widget.phone;
+      final normalizedPhone = widget.phone.trim();
       final isNewUser = widget.isNewUser;
       final registerData = widget.registerData;
 
-      debugPrint(
-        '[_verifyCode] normalizedPhone: $normalizedPhone, isNewUser: $isNewUser',
-      );
-
       if (isNewUser && registerData != null) {
-        debugPrint('[_verifyCode] Registering restaurant...');
         await _authApi.registerRestaurant(
           phone: normalizedPhone,
           code: code,
-          nameRu: (registerData['nameRu'] ?? '').toString(),
-          nameKk: (registerData['nameKk'] ?? '').toString(),
-          address: (registerData['address'] ?? '').toString(),
-          workingHoursFrom: (registerData['workingHoursFrom'] ?? '').toString(),
-          workingHoursTo: (registerData['workingHoursTo'] ?? '').toString(),
+          nameRu: (registerData['nameRu'] ?? '').toString().trim(),
+          nameKk: (registerData['nameKk'] ?? '').toString().trim(),
+          address: (registerData['address'] ?? '').toString().trim(),
+          workingHoursFrom:
+              (registerData['workingHoursFrom'] ?? '').toString().trim(),
+          workingHoursTo:
+              (registerData['workingHoursTo'] ?? '').toString().trim(),
         );
-        debugPrint('[_verifyCode] registerRestaurant success');
       } else {
-        debugPrint('[_verifyCode] Verifying code...');
         await _authApi.verifyCode(
           phone: normalizedPhone,
           code: code,
         );
-        debugPrint('[_verifyCode] verifyCode success');
       }
 
       final me = await _authApi.getMe();
-      debugPrint('ME RESPONSE: $me');
-
-      final restaurantId = me['restaurantId']?.toString();
-      debugPrint('restaurantId: $restaurantId');
+      final restaurantId = resolveRestaurantIdFromMe(me)?.trim();
 
       if (restaurantId == null || restaurantId.isEmpty) {
-        debugPrint('restaurantId is NULL/EMPTY > backend не вернул привязку');
         _showError('У аккаунта не найден ресторан');
         return;
       }
 
       SessionManager.restaurantId = restaurantId;
 
+      await _registerPushTokenSafely();
+
       if (!mounted) return;
 
-      debugPrint('[_verifyCode] Navigation to RestaurantShellPage');
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const RestaurantShellPage()),
         (route) => false,
       );
-    } catch (e, st) {
-      debugPrint('[_verifyCode] ERROR: $e');
-      debugPrintStack(stackTrace: st);
-      _showError(e.toString().replaceFirst('Exception: ', ''));
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('RestaurantSmsPage.verifyCode failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
+      _showError(_cleanError(error));
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -116,11 +116,29 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
     }
   }
 
+  Future<void> _registerPushTokenSafely() async {
+    try {
+      await RestaurantPushNotificationService.instance.registerCurrentToken();
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('Restaurant push token registration failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
+      // Do not block login. Push registration can be retried on next app start
+      // or token refresh. The restaurant must still enter the app.
+    }
+  }
+
   Future<void> _resendCode() async {
+    if (_isResending) {
+      return;
+    }
+
     setState(() => _isResending = true);
 
     try {
-      await _authApi.requestCode(phone: widget.phone);
+      await _authApi.requestCode(phone: widget.phone.trim());
 
       if (!mounted) return;
 
@@ -129,8 +147,13 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
           content: Text('Код отправлен повторно'),
         ),
       );
-    } catch (e) {
-      _showError(e.toString().replaceFirst('Exception: ', ''));
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('RestaurantSmsPage.resendCode failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
+      _showError(_cleanError(error));
     } finally {
       if (mounted) {
         setState(() => _isResending = false);
@@ -138,13 +161,29 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
     }
   }
 
+  String _cleanError(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+
+    if (message.isEmpty) {
+      return 'Произошла ошибка';
+    }
+
+    return message;
+  }
+
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: const Color(0xFFB3261E),
-        content: Text(message),
-      ),
-    );
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFB3261E),
+          content: Text(
+            message.trim().isEmpty ? 'Произошла ошибка' : message.trim(),
+          ),
+        ),
+      );
   }
 
   @override
@@ -194,7 +233,9 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         icon: const Icon(
@@ -229,6 +270,12 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                         hintText: 'Введите код',
                         prefixIcon: Icons.sms_outlined,
                         keyboardType: TextInputType.number,
+                        enabled: !_isLoading,
+                        onSubmitted: (_) {
+                          if (!_isLoading) {
+                            _verifyCode();
+                          }
+                        },
                       ),
                       const SizedBox(height: 18),
                       _GreenButton(
@@ -240,7 +287,8 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                         width: double.infinity,
                         height: 50,
                         child: OutlinedButton(
-                          onPressed: _isResending ? null : _resendCode,
+                          onPressed:
+                              _isLoading || _isResending ? null : _resendCode,
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Color(0xFF2A3950)),
                             shape: RoundedRectangleBorder(
@@ -303,12 +351,16 @@ class _DarkTextField extends StatelessWidget {
   final String hintText;
   final IconData prefixIcon;
   final TextInputType? keyboardType;
+  final bool enabled;
+  final ValueChanged<String>? onSubmitted;
 
   const _DarkTextField({
     required this.controller,
     required this.hintText,
     required this.prefixIcon,
     this.keyboardType,
+    this.enabled = true,
+    this.onSubmitted,
   });
 
   @override
@@ -322,7 +374,10 @@ class _DarkTextField extends StatelessWidget {
       ),
       child: TextField(
         controller: controller,
+        enabled: enabled,
         keyboardType: keyboardType,
+        textInputAction: TextInputAction.done,
+        onSubmitted: onSubmitted,
         style: const TextStyle(
           color: Colors.white,
           fontSize: 14,

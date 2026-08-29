@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -17,6 +17,37 @@ class ApiClient {
 
   final http.Client _http = http.Client();
   final AuthStorage _storage = AuthStorage();
+  final StreamController<void> _sessionExpiredController =
+      StreamController<void>.broadcast();
+
+  Future<_RefreshResult>? _refreshInFlight;
+
+  String? _selectedRestaurantId;
+
+  String? get selectedRestaurantId => _selectedRestaurantId;
+  Stream<void> get sessionExpiredEvents => _sessionExpiredController.stream;
+
+  Future<void> setSelectedRestaurantId(String? restaurantId) async {
+    final normalized = restaurantId?.trim();
+
+    if (normalized == null || normalized.isEmpty) {
+      _selectedRestaurantId = null;
+      await _storage.clearSelectedRestaurantId();
+      developer.log('Selected restaurant cleared', name: 'ApiClient');
+      return;
+    }
+
+    _selectedRestaurantId = normalized;
+    await _storage.saveSelectedRestaurantId(normalized);
+
+    developer.log('Selected restaurant set', name: 'ApiClient');
+  }
+
+  void clearSelectedRestaurantId() {
+    _selectedRestaurantId = null;
+
+    developer.log('Selected restaurant cleared', name: 'ApiClient');
+  }
 
   Future<dynamic> get(String path, {bool authRequired = true}) async {
     return _send(method: 'GET', path: path, authRequired: authRequired);
@@ -91,39 +122,22 @@ class ApiClient {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
 
     developer.log(
-      'API Multipart MULTI Request: POST ${uri.toString()}',
+      'API Multipart MULTI Request: POST ${uri.path}',
       name: 'ApiClient',
     );
 
     try {
       final request = http.MultipartRequest('POST', uri);
-      request.headers['Accept'] = 'application/json';
-
-      if (authRequired) {
-        final accessToken = await _storage.getAccessToken();
-        if (accessToken != null && accessToken.isNotEmpty) {
-          request.headers['Authorization'] = 'Bearer $accessToken';
-        }
-      }
+      request.headers.addAll(
+        await _buildHeaders(authRequired: authRequired, isJson: false),
+      );
 
       if (mainFile != null) {
-        developer.log(
-          'API Multipart MAIN File: ${mainFile.path}',
-          name: 'ApiClient',
-        );
-        request.files.add(
-          await _createMultipart(mainFieldName, mainFile),
-        );
+        request.files.add(await _createMultipart(mainFieldName, mainFile));
       }
 
       for (final file in files) {
-        developer.log(
-          'API Multipart EXTRA File: ${file.path}',
-          name: 'ApiClient',
-        );
-        request.files.add(
-          await _createMultipart(filesFieldName, file),
-        );
+        request.files.add(await _createMultipart(filesFieldName, file));
       }
 
       final streamedResponse = await request.send().timeout(
@@ -133,14 +147,11 @@ class ApiClient {
 
       final response = await http.Response.fromStream(streamedResponse);
 
-      developer.log(
-        'API Multipart MULTI Response [${response.statusCode}]: ${response.body}',
-        name: 'ApiClient',
-      );
+      _logResponse('POST', uri, response);
 
       if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
-        final refreshed = await _tryRefresh();
-        if (refreshed) {
+        final refreshResult = await _tryRefresh();
+        if (refreshResult == _RefreshResult.refreshed) {
           return uploadFiles(
             path,
             mainFile: mainFile,
@@ -149,6 +160,12 @@ class ApiClient {
             filesFieldName: filesFieldName,
             authRequired: authRequired,
             isRetryAfterRefresh: true,
+          );
+        }
+        if (refreshResult == _RefreshResult.transientFailure) {
+          throw const ApiException(
+            'Не удалось проверить сессию. Проверьте подключение и повторите.',
+            isTransportFailure: true,
           );
         }
       }
@@ -172,22 +189,12 @@ class ApiClient {
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
 
-    developer.log('API Request: $method ${uri.toString()}', name: 'ApiClient');
-    if (body != null) {
-      developer.log('API Payload: ${jsonEncode(body)}', name: 'ApiClient');
-    }
+    developer.log('API Request: $method ${uri.path}', name: 'ApiClient');
 
-    final headers = <String, String>{
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
-
-    if (authRequired) {
-      final accessToken = await _storage.getAccessToken();
-      if (accessToken != null && accessToken.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $accessToken';
-      }
-    }
+    final headers = await _buildHeaders(
+      authRequired: authRequired,
+      isJson: true,
+    );
 
     late http.Response response;
 
@@ -249,27 +256,41 @@ class ApiClient {
           throw Exception('Unsupported method: $method');
       }
 
-      developer.log(
-        'API Response [${response.statusCode}]: ${response.body}',
-        name: 'ApiClient',
-      );
+      _logResponse(method, uri, response);
     } on SocketException {
-      throw Exception('Нет подключения к серверу');
+      throw const ApiException(
+        'Нет подключения к серверу',
+        isTransportFailure: true,
+      );
     } on TimeoutException {
-      throw Exception('Превышено время ожидания');
+      throw const ApiException(
+        'Превышено время ожидания',
+        isTransportFailure: true,
+      );
+    } on ApiException {
+      rethrow;
     } catch (e) {
-      throw Exception('Ошибка сети: ${e.toString()}');
+      throw ApiException(
+        'Ошибка сети: ${e.toString()}',
+        isTransportFailure: true,
+      );
     }
 
     if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
-      final refreshed = await _tryRefresh();
-      if (refreshed) {
+      final refreshResult = await _tryRefresh();
+      if (refreshResult == _RefreshResult.refreshed) {
         return _send(
           method: method,
           path: path,
           body: body,
           authRequired: authRequired,
           isRetryAfterRefresh: true,
+        );
+      }
+      if (refreshResult == _RefreshResult.transientFailure) {
+        throw const ApiException(
+          'Не удалось проверить сессию. Проверьте подключение и повторите.',
+          isTransportFailure: true,
         );
       }
     }
@@ -286,29 +307,14 @@ class ApiClient {
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
 
-    developer.log(
-      'API Multipart Request: POST ${uri.toString()}',
-      name: 'ApiClient',
-    );
-    developer.log(
-      'API Multipart File: ${file.path}',
-      name: 'ApiClient',
-    );
-
+    developer.log('API Multipart Request: POST ${uri.path}', name: 'ApiClient');
     try {
       final request = http.MultipartRequest('POST', uri);
-      request.headers['Accept'] = 'application/json';
-
-      if (authRequired) {
-        final accessToken = await _storage.getAccessToken();
-        if (accessToken != null && accessToken.isNotEmpty) {
-          request.headers['Authorization'] = 'Bearer $accessToken';
-        }
-      }
-
-      request.files.add(
-        await _createMultipart(fieldName, file),
+      request.headers.addAll(
+        await _buildHeaders(authRequired: authRequired, isJson: false),
       );
+
+      request.files.add(await _createMultipart(fieldName, file));
 
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 20),
@@ -317,20 +323,23 @@ class ApiClient {
 
       final response = await http.Response.fromStream(streamedResponse);
 
-      developer.log(
-        'API Multipart Response [${response.statusCode}]: ${response.body}',
-        name: 'ApiClient',
-      );
+      _logResponse('POST', uri, response);
 
       if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
-        final refreshed = await _tryRefresh();
-        if (refreshed) {
+        final refreshResult = await _tryRefresh();
+        if (refreshResult == _RefreshResult.refreshed) {
           return _sendMultipart(
             path: path,
             file: file,
             fieldName: fieldName,
             authRequired: authRequired,
             isRetryAfterRefresh: true,
+          );
+        }
+        if (refreshResult == _RefreshResult.transientFailure) {
+          throw const ApiException(
+            'Не удалось проверить сессию. Проверьте подключение и повторите.',
+            isTransportFailure: true,
           );
         }
       }
@@ -345,10 +354,37 @@ class ApiClient {
     }
   }
 
-  Future<http.MultipartFile> _createMultipart(
-    String field,
-    File file,
-  ) async {
+  Future<Map<String, String>> _buildHeaders({
+    required bool authRequired,
+    required bool isJson,
+  }) async {
+    final headers = <String, String>{'Accept': 'application/json'};
+
+    if (isJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    if (authRequired) {
+      final accessToken = await _storage.getAccessToken();
+      if (accessToken != null && accessToken.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $accessToken';
+      }
+    }
+
+    if (_selectedRestaurantId == null ||
+        _selectedRestaurantId!.trim().isEmpty) {
+      _selectedRestaurantId = await _storage.getSelectedRestaurantId();
+    }
+
+    final restaurantId = _selectedRestaurantId?.trim();
+    if (restaurantId != null && restaurantId.isNotEmpty) {
+      headers['x-restaurant-id'] = restaurantId;
+    }
+
+    return headers;
+  }
+
+  Future<http.MultipartFile> _createMultipart(String field, File file) async {
     final fileName = file.path.split('/').last.toLowerCase();
 
     String mimeType = 'image/jpeg';
@@ -373,24 +409,38 @@ class ApiClient {
     );
   }
 
-  Future<bool> _tryRefresh() async {
+  Future<_RefreshResult> _tryRefresh() {
+    final activeRefresh = _refreshInFlight;
+    if (activeRefresh != null) return activeRefresh;
+
+    final refresh = _performRefresh();
+    _refreshInFlight = refresh;
+    return refresh.whenComplete(() {
+      if (identical(_refreshInFlight, refresh)) _refreshInFlight = null;
+    });
+  }
+
+  Future<_RefreshResult> _performRefresh() async {
     final refreshToken = await _storage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
-      await _storage.clearTokens();
-      return false;
+      await _expireSession();
+      return _RefreshResult.invalidSession;
     }
 
     final uri = Uri.parse('${AppConfig.baseUrl}/auth/refresh');
 
     try {
-      final response = await _http.post(
-        uri,
-        headers: const {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'refreshToken': refreshToken}),
-      );
+      final response = await _http
+          .post(
+            uri,
+            headers: const {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'refreshToken': refreshToken}),
+          )
+          .timeout(const Duration(seconds: 10));
+      _logResponse('POST', uri, response);
 
       final data = _decodeBody(response.body);
 
@@ -405,21 +455,43 @@ class ApiClient {
             newRefreshToken != null &&
             newRefreshToken.isNotEmpty) {
           await _storage.saveTokens(accessToken, newRefreshToken);
-          return true;
+          return _RefreshResult.refreshed;
         }
+        return _RefreshResult.transientFailure;
       }
-    } catch (_) {}
 
+      if (response.statusCode == 400 ||
+          response.statusCode == 401 ||
+          response.statusCode == 403) {
+        await _expireSession();
+        return _RefreshResult.invalidSession;
+      }
+      return _RefreshResult.transientFailure;
+    } on SocketException {
+      return _RefreshResult.transientFailure;
+    } on TimeoutException {
+      return _RefreshResult.transientFailure;
+    } catch (_) {
+      return _RefreshResult.transientFailure;
+    }
+  }
+
+  Future<void> _expireSession() async {
     await _storage.clearTokens();
-    return false;
+    clearSelectedRestaurantId();
+    _sessionExpiredController.add(null);
+  }
+
+  void _logResponse(String method, Uri uri, http.Response response) {
+    final requestId = response.headers['x-request-id'];
+    developer.log(
+      'API Response: $method ${uri.path} status=${response.statusCode}'
+      '${requestId == null || requestId.isEmpty ? '' : ' requestId=$requestId'}',
+      name: 'ApiClient',
+    );
   }
 
   dynamic _handleResponse(http.Response response) {
-    developer.log(
-      'API Response: ${response.statusCode} for ${response.request?.url}',
-      name: 'ApiClient',
-    );
-
     final decoded = _decodeBody(response.body);
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -471,7 +543,11 @@ class ApiClient {
       }
     }
 
-    throw Exception(errorMessage);
+    throw ApiException(
+      errorMessage,
+      statusCode: response.statusCode,
+      isTransportFailure: response.statusCode >= 500,
+    );
   }
 
   dynamic _decodeBody(String body) {
@@ -483,3 +559,22 @@ class ApiClient {
     }
   }
 }
+
+class ApiException implements Exception {
+  const ApiException(
+    this.message, {
+    this.statusCode,
+    this.isTransportFailure = false,
+  });
+
+  final String message;
+  final int? statusCode;
+  final bool isTransportFailure;
+
+  bool get isInvalidSession => statusCode == 401 || statusCode == 403;
+
+  @override
+  String toString() => 'Exception: $message';
+}
+
+enum _RefreshResult { refreshed, invalidSession, transientFailure }
