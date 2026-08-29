@@ -371,10 +371,10 @@ class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
                     icon: Icons.trending_up_rounded,
                     iconBg: const Color(0x3329D391),
                     iconColor: const Color(0xFF00E79A),
-                    title: 'Выручка (итого)',
+                    title: 'Оборот блюд',
                     value: _currency(metrics.overview.totalRevenue),
                     subtitle:
-                        'Средний чек ${_currency(metrics.overview.avgCheckRevenue)}',
+                        'Средняя сумма ${_currency(metrics.overview.avgCheckRevenue)}',
                   ),
                   _MetricTile(
                     icon: Icons.receipt_long_rounded,
@@ -389,9 +389,10 @@ class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
                     icon: Icons.account_balance_wallet_outlined,
                     iconBg: const Color(0x3300D0FF),
                     iconColor: const Color(0xFF00D9FF),
-                    title: 'Оплаты',
+                    title: 'Выплаты',
                     value: '${metrics.overview.paidRatePercent}%',
-                    subtitle: 'Оплачено: ${metrics.overview.paidCount}',
+                    subtitle:
+                        'Выплачено заказов: ${metrics.overview.paidCount}',
                   ),
                   _MetricTile(
                     icon: Icons.cancel_outlined,
@@ -435,7 +436,7 @@ class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
                         ? metrics.reviews.averageRating.toStringAsFixed(1)
                         : '0.0',
                     subtitle:
-                        'Отзывы: ${metrics.reviews.reviewsCount}, rate ${metrics.reviews.reviewRatePercent}%',
+                        'Отзывы: ${metrics.reviews.reviewsCount}, доля ${metrics.reviews.reviewRatePercent}%',
                   ),
                   _MetricTile(
                     icon: Icons.verified_outlined,
@@ -450,17 +451,17 @@ class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
                     icon: Icons.payments_outlined,
                     iconBg: const Color(0x333CCB7F),
                     iconColor: const Color(0xFF5CF2A0),
-                    title: 'Payout',
+                    title: 'Начислено ресторану',
                     value: _currency(metrics.overview.totalDelivered),
                     subtitle:
-                        'Оплачено ${_currency(metrics.overview.totalPaid)}',
+                        'Выплачено ${_currency(metrics.overview.totalPaid)}',
                   ),
                 ],
               ),
               const SizedBox(height: 14),
               _LineChartCard(
-                title: 'Выручка по дням',
-                subtitle: 'Динамика дохода за выбранный период',
+                title: 'Оборот блюд по дням',
+                subtitle: 'Сумма блюд по доставленным оплаченным заказам',
                 items: metrics.daily,
                 mode: _ChartMode.revenue,
               ),
@@ -1206,7 +1207,7 @@ class _TrendCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _TrendRow(
-            label: 'Выручка vs предыдущий период',
+            label: 'Оборот блюд vs предыдущий период',
             value: trends.trendRevenuePercent,
           ),
           const SizedBox(height: 10),
