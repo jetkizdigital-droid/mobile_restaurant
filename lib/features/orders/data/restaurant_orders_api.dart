@@ -115,7 +115,7 @@ class RestaurantOrdersApi {
     final path = '/orders/$id/verify-pickup';
 
     final dynamic response = await _apiClient.post(path, <String, dynamic>{
-      'pickupCode': normalizedCode,
+      'code': normalizedCode,
     });
 
     if (response is Map) {
