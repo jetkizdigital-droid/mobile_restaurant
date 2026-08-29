@@ -15,7 +15,7 @@ class RestaurantMenuApi {
 
   Future<Map<String, dynamic>> getMenu(String restaurantId) async {
     final response = await _client.get(
-      '/restaurants/$restaurantId/menu?includeUnavailable=1',
+      '/restaurants/$restaurantId/menu/manage?includeUnavailable=1',
     );
 
     return Map<String, dynamic>.from(response as Map);
@@ -103,14 +103,9 @@ class RestaurantMenuApi {
   }) async {
     if (mainImage == null && otherImages.isEmpty) return;
 
-    final files = <File>[
-      if (mainImage != null) mainImage,
-      ...otherImages,
-    ];
-
     await _client.uploadFiles(
       '/restaurants/$restaurantId/menu/products/$productId/images',
-      files: files,
+      files: otherImages,
       mainFile: mainImage,
       mainFieldName: 'main',
       filesFieldName: 'others',
