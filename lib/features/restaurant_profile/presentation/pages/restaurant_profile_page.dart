@@ -581,6 +581,12 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       // Local logout must still complete when unregister is temporarily unavailable.
     }
 
+    try {
+      await _authApi.logout();
+    } catch (_) {
+      // Local logout must still complete when the server is temporarily unavailable.
+    }
+
     RestaurantPushNotificationService.instance.markNavigationUnavailable();
     await AuthStorage().clearTokens();
     ApiClient.instance.clearSelectedRestaurantId();
