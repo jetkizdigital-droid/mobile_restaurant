@@ -29,7 +29,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
   final Set<String> _updatingOrderIds = <String>{};
 
-  String _selectedStatus = 'ALL';
+  String _selectedStatus = 'CREATED';
 
   final List<_OrderFilterItem> _filters = const [
     _OrderFilterItem(code: 'ALL', label: 'Все'),
@@ -75,7 +75,9 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
         });
       }
 
-      final result = await _ordersApi.getOrders();
+      final result = await _ordersApi.getOrders(
+        status: _selectedStatus == 'ALL' ? null : _selectedStatus,
+      );
 
       if (!mounted) return;
 
@@ -118,8 +120,8 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
     setState(() {
       _selectedStatus = status;
-      _applyFilter();
     });
+    unawaited(_loadOrders());
   }
 
   Future<void> _openOrder(Map<String, dynamic> order) async {
