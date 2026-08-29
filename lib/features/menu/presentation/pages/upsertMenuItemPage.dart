@@ -143,22 +143,6 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     );
   }
 
-  RestaurantMenuItem? _findCreatedItem(
-    List<RestaurantMenuItem> items, {
-    required String titleRu,
-    required int price,
-    required String categoryId,
-  }) {
-    final matches = items.where((item) {
-      return item.titleRu.trim() == titleRu.trim() &&
-          item.price == price &&
-          item.categoryId == categoryId;
-    }).toList();
-
-    if (matches.isEmpty) return null;
-    return matches.last;
-  }
-
   @override
   void dispose() {
     _titleRuController.dispose();
@@ -240,36 +224,30 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
 
         await _uploadPickedImages(widget.item!.id);
       } else {
-        await _api.createProduct(
+        final created = await _api.createProduct(
           widget.restaurantId,
           data,
         );
+        final createdProductId = created['id']?.toString().trim() ?? '';
 
-        if (_mainImageFile != null ||
-            _otherImageFiles.isNotEmpty ||
-            !_isAvailable) {
-          final response = await _api.getMenu(widget.restaurantId);
-          final parsed = RestaurantMenuData.fromJson(response);
+        final needsFollowUp =
+            _mainImageFile != null || _otherImageFiles.isNotEmpty || !_isAvailable;
 
-          final createdItem = _findCreatedItem(
-            parsed.items,
-            titleRu: titleRu,
-            price: price,
-            categoryId: categoryId,
+        if (needsFollowUp && createdProductId.isEmpty) {
+          throw Exception(
+            'Сервер создал блюдо, но не вернул его идентификатор. Обновите меню перед повторной попыткой.',
           );
-
-          if (createdItem != null) {
-            if (!_isAvailable) {
-              await _api.updateAvailability(
-                restaurantId: widget.restaurantId,
-                productId: createdItem.id,
-                value: false,
-              );
-            }
-
-            await _uploadPickedImages(createdItem.id);
-          }
         }
+
+        if (!_isAvailable) {
+          await _api.updateAvailability(
+            restaurantId: widget.restaurantId,
+            productId: createdProductId,
+            value: false,
+          );
+        }
+
+        await _uploadPickedImages(createdProductId);
       }
 
       if (!mounted) return;
