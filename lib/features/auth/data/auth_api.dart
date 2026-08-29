@@ -97,6 +97,10 @@ class AuthApi {
     return response;
   }
 
+  Future<void> logout() async {
+    await _client.post('/auth/logout', const <String, dynamic>{});
+  }
+
   Future<void> _saveTokensFromResponse(Map<String, dynamic> response) async {
     final accessToken = response['accessToken']?.toString();
     final refreshToken = response['refreshToken']?.toString();
