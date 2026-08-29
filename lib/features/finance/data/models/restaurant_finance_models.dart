@@ -148,11 +148,13 @@ class RestaurantFinanceSummary {
       deliveryFee: _toDouble(json['deliveryFee']),
       discountAmount: _toDouble(json['discountAmount']),
       deliveryDiscountAmount: _toDouble(json['deliveryDiscountAmount']),
-      grossTotal: _toDouble(json['grossTotal']),
+      grossTotal: _toDouble(json['grossTotal'] ?? json['subtotal']),
       commissionAmount: _toDouble(json['commissionAmount']),
       payoutAmount: _toDouble(json['payoutAmount']),
       averagePayoutPerOrder: _toDouble(json['averagePayoutPerOrder']),
-      averageGrossOrderValue: _toDouble(json['averageGrossOrderValue']),
+      averageGrossOrderValue: _toDouble(
+        json['averageGrossOrderValue'] ?? json['averageFoodSubtotalPerOrder'],
+      ),
     );
   }
 }
@@ -176,7 +178,7 @@ class RestaurantFinanceAllTime {
     return RestaurantFinanceAllTime(
       deliveredOrdersCount: _toInt(json['deliveredOrdersCount']),
       subtotal: _toDouble(json['subtotal']),
-      grossTotal: _toDouble(json['grossTotal']),
+      grossTotal: _toDouble(json['grossTotal'] ?? json['subtotal']),
       commissionAmount: _toDouble(json['commissionAmount']),
       payoutAmount: _toDouble(json['payoutAmount']),
     );
