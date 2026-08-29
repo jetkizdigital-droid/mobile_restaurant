@@ -142,7 +142,10 @@ class ApiClient {
 
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 20),
-        onTimeout: () => throw Exception('Превышено время ожидания'),
+        onTimeout: () => throw const ApiException(
+          'Превышено время ожидания',
+          isTransportFailure: true,
+        ),
       );
 
       final response = await http.Response.fromStream(streamedResponse);
@@ -170,13 +173,28 @@ class ApiClient {
         }
       }
 
+      if (response.statusCode == 401 && authRequired && isRetryAfterRefresh) {
+        await _expireSession();
+      }
+
       return _handleResponse(response);
     } on SocketException {
-      throw Exception('Нет подключения к серверу');
+      throw const ApiException(
+        'Нет подключения к серверу',
+        isTransportFailure: true,
+      );
     } on TimeoutException {
-      throw Exception('Превышено время ожидания');
+      throw const ApiException(
+        'Превышено время ожидания',
+        isTransportFailure: true,
+      );
+    } on ApiException {
+      rethrow;
     } catch (e) {
-      throw Exception('Ошибка загрузки файлов: ${e.toString()}');
+      throw ApiException(
+        'Ошибка загрузки файлов: ${e.toString()}',
+        isTransportFailure: true,
+      );
     }
   }
 
@@ -205,7 +223,10 @@ class ApiClient {
               .get(uri, headers: headers)
               .timeout(
                 const Duration(seconds: 10),
-                onTimeout: () => throw Exception('Превышено время ожидания'),
+                onTimeout: () => throw const ApiException(
+                  'Превышено время ожидания',
+                  isTransportFailure: true,
+                ),
               );
           break;
         case 'POST':
@@ -217,7 +238,10 @@ class ApiClient {
               )
               .timeout(
                 const Duration(seconds: 10),
-                onTimeout: () => throw Exception('Превышено время ожидания'),
+                onTimeout: () => throw const ApiException(
+                  'Превышено время ожидания',
+                  isTransportFailure: true,
+                ),
               );
           break;
         case 'PATCH':
@@ -229,7 +253,10 @@ class ApiClient {
               )
               .timeout(
                 const Duration(seconds: 10),
-                onTimeout: () => throw Exception('Превышено время ожидания'),
+                onTimeout: () => throw const ApiException(
+                  'Превышено время ожидания',
+                  isTransportFailure: true,
+                ),
               );
           break;
         case 'PUT':
@@ -241,7 +268,10 @@ class ApiClient {
               )
               .timeout(
                 const Duration(seconds: 10),
-                onTimeout: () => throw Exception('Превышено время ожидания'),
+                onTimeout: () => throw const ApiException(
+                  'Превышено время ожидания',
+                  isTransportFailure: true,
+                ),
               );
           break;
         case 'DELETE':
@@ -249,11 +279,14 @@ class ApiClient {
               .delete(uri, headers: headers)
               .timeout(
                 const Duration(seconds: 10),
-                onTimeout: () => throw Exception('Превышено время ожидания'),
+                onTimeout: () => throw const ApiException(
+                  'Превышено время ожидания',
+                  isTransportFailure: true,
+                ),
               );
           break;
         default:
-          throw Exception('Unsupported method: $method');
+          throw ApiException('Неподдерживаемый HTTP-метод: $method');
       }
 
       _logResponse(method, uri, response);
@@ -295,6 +328,10 @@ class ApiClient {
       }
     }
 
+    if (response.statusCode == 401 && authRequired && isRetryAfterRefresh) {
+      await _expireSession();
+    }
+
     return _handleResponse(response);
   }
 
@@ -318,7 +355,10 @@ class ApiClient {
 
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 20),
-        onTimeout: () => throw Exception('Превышено время ожидания'),
+        onTimeout: () => throw const ApiException(
+          'Превышено время ожидания',
+          isTransportFailure: true,
+        ),
       );
 
       final response = await http.Response.fromStream(streamedResponse);
@@ -344,13 +384,28 @@ class ApiClient {
         }
       }
 
+      if (response.statusCode == 401 && authRequired && isRetryAfterRefresh) {
+        await _expireSession();
+      }
+
       return _handleResponse(response);
     } on SocketException {
-      throw Exception('Нет подключения к серверу');
+      throw const ApiException(
+        'Нет подключения к серверу',
+        isTransportFailure: true,
+      );
     } on TimeoutException {
-      throw Exception('Превышено время ожидания');
+      throw const ApiException(
+        'Превышено время ожидания',
+        isTransportFailure: true,
+      );
+    } on ApiException {
+      rethrow;
     } catch (e) {
-      throw Exception('Ошибка загрузки файла: ${e.toString()}');
+      throw ApiException(
+        'Ошибка загрузки файла: ${e.toString()}',
+        isTransportFailure: true,
+      );
     }
   }
 
@@ -387,8 +442,7 @@ class ApiClient {
   Future<http.MultipartFile> _createMultipart(String field, File file) async {
     final fileName = file.path.split('/').last.toLowerCase();
 
-    String mimeType = 'image/jpeg';
-    String safeFileName = fileName;
+    late final String mimeType;
 
     if (fileName.endsWith('.png')) {
       mimeType = 'image/png';
@@ -397,14 +451,15 @@ class ApiClient {
     } else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) {
       mimeType = 'image/jpeg';
     } else {
-      safeFileName = '$fileName.jpg';
-      mimeType = 'image/jpeg';
+      throw const ApiException(
+        'Поддерживаются изображения JPG, JPEG, PNG или WEBP',
+      );
     }
 
     return http.MultipartFile.fromPath(
       field,
       file.path,
-      filename: safeFileName,
+      filename: fileName,
       contentType: MediaType.parse(mimeType),
     );
   }
@@ -571,7 +626,7 @@ class ApiException implements Exception {
   final int? statusCode;
   final bool isTransportFailure;
 
-  bool get isInvalidSession => statusCode == 401 || statusCode == 403;
+  bool get isInvalidSession => statusCode == 401;
 
   @override
   String toString() => 'Exception: $message';
