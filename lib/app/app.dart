@@ -13,11 +13,19 @@ class JetkizRestaurantApp extends StatelessWidget {
       navigatorKey: RestaurantPushNotificationService.navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Jetkiz Restaurant',
-      locale: const Locale('ru'),
       supportedLocales: const [
         Locale('ru'),
-        Locale('en'),
+        Locale('kk'),
       ],
+      localeResolutionCallback: (deviceLocale, supportedLocales) {
+        // Product rule: Russian is the default language. Only a Kazakh device
+        // locale switches the first launch to Kazakh; every other locale falls
+        // back to Russian.
+        if (deviceLocale?.languageCode.toLowerCase() == 'kk') {
+          return const Locale('kk');
+        }
+        return const Locale('ru');
+      },
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
