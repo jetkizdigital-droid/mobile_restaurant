@@ -1,14 +1,46 @@
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
+import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 
 class RestaurantOrdersApi {
   RestaurantOrdersApi({ApiClient? apiClient})
-    : _apiClient = apiClient ?? ApiClient.instance;
+      : _apiClient = apiClient ?? ApiClient.instance;
 
   final ApiClient _apiClient;
 
   Future<List<Map<String, dynamic>>> getOrders({
     int page = 1,
-    int limit = 20,
+    int limit = 100,
+    String? q,
+    String? status,
+    bool fetchAllPages = true,
+  }) async {
+    final safeLimit = limit.clamp(1, 100);
+    final result = <Map<String, dynamic>>[];
+    var currentPage = page < 1 ? 1 : page;
+
+    // The restaurant order screen historically loaded only page 1. Fetch all
+    // pages transparently so filters cannot silently hide older orders. The
+    // upper bound prevents a malformed backend response from causing a loop.
+    for (var requestIndex = 0; requestIndex < 20; requestIndex++) {
+      final items = await _getOrdersPage(
+        page: currentPage,
+        limit: safeLimit,
+        q: q,
+        status: status,
+      );
+
+      result.addAll(items);
+
+      if (!fetchAllPages || items.length < safeLimit) break;
+      currentPage += 1;
+    }
+
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> _getOrdersPage({
+    required int page,
+    required int limit,
     String? q,
     String? status,
   }) async {
@@ -27,9 +59,12 @@ class RestaurantOrdersApi {
 
     final queryString = Uri(queryParameters: query).query;
     final path = queryString.isEmpty ? '/orders' : '/orders?$queryString';
-
     final dynamic response = await _apiClient.get(path);
 
+    return _extractOrders(response);
+  }
+
+  List<Map<String, dynamic>> _extractOrders(dynamic response) {
     if (response is List) {
       return response
           .whereType<Map>()
@@ -37,37 +72,16 @@ class RestaurantOrdersApi {
           .toList();
     }
 
-    if (response is Map<String, dynamic>) {
-      final dynamic items = response['items'];
-      if (items is List) {
-        return items
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-      }
-
-      final dynamic data = response['data'];
-      if (data is List) {
-        return data
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-      }
-
-      final dynamic orders = response['orders'];
-      if (orders is List) {
-        return orders
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-      }
-
-      final dynamic result = response['result'];
-      if (result is List) {
-        return result
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
+    if (response is Map) {
+      final map = Map<String, dynamic>.from(response);
+      for (final key in const ['items', 'data', 'orders', 'result']) {
+        final dynamic raw = map[key];
+        if (raw is List) {
+          return raw
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
       }
     }
 
@@ -75,9 +89,7 @@ class RestaurantOrdersApi {
   }
 
   Future<Map<String, dynamic>> getOrderById(String id) async {
-    final path = '/orders/$id';
-
-    final dynamic response = await _apiClient.get(path);
+    final dynamic response = await _apiClient.get('/orders/$id');
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
@@ -90,11 +102,29 @@ class RestaurantOrdersApi {
     required String id,
     required String status,
   }) async {
-    final path = '/orders/$id/status';
+    final normalizedStatus = status.trim().toUpperCase();
+    final cms = RestaurantAppCmsSession.instance;
 
-    final dynamic response = await _apiClient.patch(path, <String, dynamic>{
-      'status': status,
-    });
+    if (normalizedStatus == 'ACCEPTED' &&
+        !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
+      throw Exception(
+        cms.featureReason('ACCEPT_ORDERS_ENABLED') ??
+            'Приём заказов временно недоступен',
+      );
+    }
+
+    if (normalizedStatus == 'REJECTED' &&
+        !cms.featureEnabled('REJECT_ORDERS_ENABLED')) {
+      throw Exception(
+        cms.featureReason('REJECT_ORDERS_ENABLED') ??
+            'Отклонение заказов временно недоступно',
+      );
+    }
+
+    final dynamic response = await _apiClient.patch(
+      '/orders/$id/status',
+      <String, dynamic>{'status': normalizedStatus},
+    );
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
@@ -112,11 +142,10 @@ class RestaurantOrdersApi {
       throw Exception('Введите код клиента');
     }
 
-    final path = '/orders/$id/verify-pickup';
-
-    final dynamic response = await _apiClient.post(path, <String, dynamic>{
-      'code': normalizedCode,
-    });
+    final dynamic response = await _apiClient.post(
+      '/orders/$id/verify-pickup',
+      <String, dynamic>{'code': normalizedCode},
+    );
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
@@ -129,11 +158,10 @@ class RestaurantOrdersApi {
     required String id,
     required String courierUserId,
   }) async {
-    final path = '/orders/$id/assign-courier';
-
-    final dynamic response = await _apiClient.patch(path, <String, dynamic>{
-      'courierUserId': courierUserId,
-    });
+    final dynamic response = await _apiClient.patch(
+      '/orders/$id/assign-courier',
+      <String, dynamic>{'courierUserId': courierUserId},
+    );
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
@@ -143,9 +171,10 @@ class RestaurantOrdersApi {
   }
 
   Future<Map<String, dynamic>> unassignCourier({required String id}) async {
-    final path = '/orders/$id/unassign-courier';
-
-    final dynamic response = await _apiClient.patch(path, <String, dynamic>{});
+    final dynamic response = await _apiClient.patch(
+      '/orders/$id/unassign-courier',
+      <String, dynamic>{},
+    );
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
@@ -155,9 +184,10 @@ class RestaurantOrdersApi {
   }
 
   Future<Map<String, dynamic>> autoAssignCourier({required String id}) async {
-    final path = '/orders/$id/auto-assign';
-
-    final dynamic response = await _apiClient.patch(path, <String, dynamic>{});
+    final dynamic response = await _apiClient.patch(
+      '/orders/$id/auto-assign',
+      <String, dynamic>{},
+    );
 
     if (response is Map) {
       return Map<String, dynamic>.from(response);
