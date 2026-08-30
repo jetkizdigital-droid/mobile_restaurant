@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.dart';
 import 'package:jetkiz_restaurant/features/notifications/data/restaurant_notifications_api.dart';
 import 'package:jetkiz_restaurant/features/notifications/presentation/pages/restaurant_notifications_page.dart';
+import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class RestaurantSupportPage extends StatefulWidget {
@@ -15,10 +17,12 @@ class RestaurantSupportPage extends StatefulWidget {
 class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   final RestaurantNotificationsApi _notificationsApi =
       RestaurantNotificationsApi();
+  late final RestaurantApi _restaurantApi = RestaurantApi(ApiClient.instance);
 
   RestaurantAppBootstrap? _bootstrap;
   int _unreadCount = 0;
   bool _loading = true;
+  bool _requestingDeletion = false;
   String? _error;
 
   @override
@@ -70,7 +74,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     if (uri == null || !uri.hasScheme) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Контакт поддержки пока недоступен')),
+          const SnackBar(content: Text('Telegram поддержки пока недоступен')),
         );
       }
       return;
@@ -78,32 +82,65 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     await _open(uri);
   }
 
-  Future<void> _call(String? phone) async {
-    final normalized = phone?.replaceAll(RegExp(r'[^0-9+]'), '') ?? '';
-    if (normalized.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Телефон поддержки пока не указан')),
-        );
-      }
-      return;
-    }
-    await _open(Uri(scheme: 'tel', path: normalized));
-  }
-
   Future<void> _requestAccountDeletion() async {
-    final support = _bootstrap?.support;
-    final whatsapp = support?.whatsappUrl?.trim() ?? '';
+    if (_requestingDeletion) return;
 
-    if (whatsapp.isNotEmpty) {
-      final uri = Uri.tryParse(whatsapp);
-      if (uri != null && uri.hasScheme) {
-        await _open(uri);
-        return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Запросить удаление аккаунта?'),
+        content: const Text(
+          'Аккаунт не будет удалён автоматически. JETKIZ получит заявку и свяжется с вами для проверки активных заказов и дальнейших действий.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Отправить запрос'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _requestingDeletion = true;
+    });
+
+    try {
+      final response = await _restaurantApi.requestAccountDeletion();
+      if (!mounted) return;
+
+      final message =
+          response['message']?.toString().trim().isNotEmpty == true
+              ? response['message'].toString().trim()
+              : 'Запрос на удаление аккаунта отправлен';
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', '').trim(),
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _requestingDeletion = false;
+        });
       }
     }
-
-    await _call(support?.phone);
   }
 
   Future<void> _openNotifications() async {
@@ -152,35 +189,19 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
                 body: support!.emergencyTextRu!.trim(),
               ),
             _SupportAction(
+              icon: Icons.send_rounded,
+              title: 'Поддержка JETKIZ',
+              subtitle: 'Открыть группу поддержки в Telegram',
+              enabled: (support?.telegramUrl ?? '').trim().isNotEmpty,
+              onTap: () => _openRawUrl(support?.telegramUrl),
+            ),
+            _SupportAction(
               icon: Icons.notifications_rounded,
               title: 'Уведомления',
               subtitle: _unreadCount > 0
                   ? 'Непрочитанных: $_unreadCount'
                   : 'Все сообщения JETKIZ',
               onTap: _openNotifications,
-            ),
-            _SupportAction(
-              icon: Icons.chat_rounded,
-              title: 'WhatsApp',
-              subtitle: 'Написать в поддержку',
-              enabled: (support?.whatsappUrl ?? '').trim().isNotEmpty,
-              onTap: () => _openRawUrl(support?.whatsappUrl),
-            ),
-            _SupportAction(
-              icon: Icons.send_rounded,
-              title: 'Telegram',
-              subtitle: 'Открыть поддержку в Telegram',
-              enabled: (support?.telegramUrl ?? '').trim().isNotEmpty,
-              onTap: () => _openRawUrl(support?.telegramUrl),
-            ),
-            _SupportAction(
-              icon: Icons.phone_rounded,
-              title: 'Позвонить',
-              subtitle: support?.phone?.trim().isNotEmpty == true
-                  ? support!.phone!.trim()
-                  : 'Телефон пока не указан',
-              enabled: support?.phone?.trim().isNotEmpty == true,
-              onTap: () => _call(support?.phone),
             ),
             if ((support?.workingHoursRu ?? '').trim().isNotEmpty)
               _MessageCard(
@@ -207,7 +228,10 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
             _SupportAction(
               icon: Icons.delete_outline_rounded,
               title: 'Удаление аккаунта',
-              subtitle: 'Отправить запрос в поддержку JETKIZ',
+              subtitle: _requestingDeletion
+                  ? 'Отправляем запрос…'
+                  : 'Отправить официальный запрос в JETKIZ',
+              enabled: !_requestingDeletion,
               onTap: _requestAccountDeletion,
             ),
             const SizedBox(height: 18),
