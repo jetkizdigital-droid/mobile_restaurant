@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - fix/restaurant-production-audit
   pull_request:
     paths:
