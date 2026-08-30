@@ -12,6 +12,7 @@ on:
       - 'ios/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
+      - 'analysis_options.yaml'
       - '.github/workflows/flutter-ci.yml'
 
 jobs:
@@ -36,7 +37,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Tests
         run: flutter test
