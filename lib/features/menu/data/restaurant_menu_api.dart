@@ -5,6 +5,8 @@ import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 
 class RestaurantMenuApi {
+  static const int maxProductImages = 5;
+
   final ApiClient _client;
 
   RestaurantMenuApi({ApiClient? client})
@@ -133,6 +135,13 @@ class RestaurantMenuApi {
     _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
     if (mainImage == null && otherImages.isEmpty) return;
 
+    final totalImages = (mainImage == null ? 0 : 1) + otherImages.length;
+    if (totalImages > maxProductImages) {
+      throw Exception(
+        'Можно загрузить максимум $maxProductImages фото блюда',
+      );
+    }
+
     final preparedMain =
         mainImage == null ? null : await _prepareUploadImage(mainImage);
     final preparedOthers = <File>[];
@@ -156,6 +165,11 @@ class RestaurantMenuApi {
   }) async {
     _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
     if (images.isEmpty) return;
+    if (images.length > maxProductImages) {
+      throw Exception(
+        'Можно загрузить максимум $maxProductImages фото блюда',
+      );
+    }
 
     final prepared = <File>[];
     for (final image in images) {
