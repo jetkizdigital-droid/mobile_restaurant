@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_data.dart';
@@ -10,10 +10,20 @@ class RestaurantApi {
 
   Future<RestaurantProfileData> getMyRestaurant() async {
     final response = await _client.get('/restaurants/me');
+    final profile = Map<String, dynamic>.from(response as Map);
 
-    return RestaurantProfileData.fromJson(
-      Map<String, dynamic>.from(response as Map),
-    );
+    try {
+      final runtimeResponse = await _client.get('/restaurants/me/runtime');
+      if (runtimeResponse is Map) {
+        profile.addAll(Map<String, dynamic>.from(runtimeResponse));
+      }
+    } on ApiException catch (error) {
+      // Backward-compatible while backend rollout is in progress. Any error
+      // except a missing endpoint must remain visible to the caller.
+      if (error.statusCode != 404) rethrow;
+    }
+
+    return RestaurantProfileData.fromJson(profile);
   }
 
   Future<RestaurantProfileData> updateMe({
@@ -21,7 +31,7 @@ class RestaurantApi {
     required String phone,
     required String workingHours,
   }) async {
-    final response = await _client.patch(
+    await _client.patch(
       '/restaurants/me',
       {
         'address': address,
@@ -30,9 +40,16 @@ class RestaurantApi {
       },
     );
 
-    return RestaurantProfileData.fromJson(
-      Map<String, dynamic>.from(response as Map),
+    return getMyRestaurant();
+  }
+
+  Future<RestaurantProfileData> setAcceptingOrders(bool value) async {
+    await _client.patch(
+      '/restaurants/me/accepting-orders',
+      {'isAcceptingOrders': value},
     );
+
+    return getMyRestaurant();
   }
 
   Future<RestaurantProfileData> uploadRestaurantCover(File file) async {
