@@ -29,17 +29,28 @@ class RestaurantMenuData {
 
 class RestaurantMenuCategory {
   final String id;
-  final String title;
+  final String titleRu;
+  final String titleKk;
+  final int sortOrder;
 
-  RestaurantMenuCategory({
+  const RestaurantMenuCategory({
     required this.id,
-    required this.title,
+    required this.titleRu,
+    required this.titleKk,
+    this.sortOrder = 0,
   });
 
+  String get title => titleRu.trim().isNotEmpty ? titleRu.trim() : titleKk.trim();
+
   factory RestaurantMenuCategory.fromJson(Map<String, dynamic> json) {
+    final ru = (json['titleRu'] ?? json['title'] ?? '').toString();
+    final kk = (json['titleKk'] ?? '').toString();
+
     return RestaurantMenuCategory(
       id: json['id']?.toString() ?? '',
-      title: (json['titleRu'] ?? json['title'] ?? '').toString(),
+      titleRu: ru,
+      titleKk: kk,
+      sortOrder: _toInt(json['sortOrder']),
     );
   }
 }
@@ -160,4 +171,10 @@ class RestaurantMenuImage {
       isMain: json['isMain'] == true,
     );
   }
+}
+
+int _toInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
 }
