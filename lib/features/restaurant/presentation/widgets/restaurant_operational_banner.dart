@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/network/api_client.dart';
+import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
 import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_data.dart';
 
-class RestaurantOperationalBanner extends StatelessWidget {
+class RestaurantOperationalBanner extends StatefulWidget {
   const RestaurantOperationalBanner({
     super.key,
     required this.profile,
@@ -16,7 +20,113 @@ class RestaurantOperationalBanner extends StatelessWidget {
   final VoidCallback? onResubmit;
 
   @override
+  State<RestaurantOperationalBanner> createState() =>
+      _RestaurantOperationalBannerState();
+}
+
+class _RestaurantOperationalBannerState
+    extends State<RestaurantOperationalBanner> {
+  Timer? _refreshTimer;
+  late RestaurantProfileData _profile;
+  bool _isRefreshing = false;
+  bool _isResubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = widget.profile;
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(_refreshRestaurantState()),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant RestaurantOperationalBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile != widget.profile) {
+      _profile = widget.profile;
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshRestaurantState() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+
+    try {
+      final latest = await RestaurantApi(
+        ApiClient.instance,
+      ).getMyRestaurant();
+      if (!mounted) return;
+      setState(() {
+        _profile = latest;
+      });
+    } catch (_) {
+      // Keep the last known state. Backend guards remain authoritative.
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
+  Future<void> _resubmitForReview() async {
+    if (_isResubmitting || widget.isUpdating) return;
+
+    setState(() {
+      _isResubmitting = true;
+    });
+
+    try {
+      if (widget.onResubmit != null) {
+        widget.onResubmit!();
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        await _refreshRestaurantState();
+        return;
+      }
+
+      final latest = await RestaurantApi(
+        ApiClient.instance,
+      ).resubmitForReview();
+      if (!mounted) return;
+      setState(() {
+        _profile = latest;
+      });
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Заявка повторно отправлена на модерацию'),
+          ),
+        );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', '').trim(),
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isResubmitting = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final profile = _profile;
     final approved = profile.isApproved;
     final blocked = profile.isBlocked;
     final needsAttention = profile.needsOnboardingAttention;
@@ -91,7 +201,7 @@ class RestaurantOperationalBanner extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   description,
-                  maxLines: 3,
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFFCBD5E1),
@@ -99,10 +209,23 @@ class RestaurantOperationalBanner extends StatelessWidget {
                     height: 1.3,
                   ),
                 ),
-                if (profile.canResubmitForReview && onResubmit != null) ...[
+                if (profile.effectiveRestaurantCommissionPct != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Комиссия JETKIZ: ${profile.displayCommission} · ${profile.commissionTypeLabel}',
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                if (profile.canResubmitForReview) ...[
                   const SizedBox(height: 8),
                   TextButton.icon(
-                    onPressed: isUpdating ? null : onResubmit,
+                    onPressed: widget.isUpdating || _isResubmitting
+                        ? null
+                        : _resubmitForReview,
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -111,7 +234,16 @@ class RestaurantOperationalBanner extends StatelessWidget {
                       foregroundColor: Colors.white,
                       backgroundColor: const Color(0xFF7F1D1D),
                     ),
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    icon: _isResubmitting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.refresh_rounded, size: 16),
                     label: const Text(
                       'Отправить на повторную проверку',
                       style: TextStyle(fontWeight: FontWeight.w700),
@@ -123,7 +255,7 @@ class RestaurantOperationalBanner extends StatelessWidget {
           ),
           if (approved && published && !blocked) ...[
             const SizedBox(width: 8),
-            if (isUpdating)
+            if (widget.isUpdating)
               const SizedBox(
                 width: 24,
                 height: 24,
@@ -134,7 +266,7 @@ class RestaurantOperationalBanner extends StatelessWidget {
                 value: accepting,
                 activeColor: const Color(0xFF65C044),
                 onChanged: accepting || profile.canEnableAcceptingOrders
-                    ? onAcceptingOrdersChanged
+                    ? widget.onAcceptingOrdersChanged
                     : null,
               ),
           ],
