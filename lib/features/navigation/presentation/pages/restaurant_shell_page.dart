@@ -6,6 +6,8 @@ import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/core/session/restaurant_session.dart';
 import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
+import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
+import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.dart';
 import 'package:jetkiz_restaurant/features/finance/presentation/pages/restaurant_finance_page.dart';
 import 'package:jetkiz_restaurant/features/menu/presentation/pages/restaurant_menu_page.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/widgets/restaurant_bottom_bar.dart';
@@ -36,6 +38,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
   bool _openingLogin = false;
   bool _isUpdatingAcceptingOrders = false;
   RestaurantProfileData? _restaurantProfile;
+  RestaurantAppBootstrap? _cmsBootstrap;
 
   final List<RestaurantBottomBarTab> _tabOrder = <RestaurantBottomBarTab>[
     RestaurantBottomBarTab.orders,
@@ -65,6 +68,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
   void _openLogin() {
     if (!mounted || _openingLogin) return;
     _openingLogin = true;
+    RestaurantAppCmsSession.instance.clear();
     RestaurantPushNotificationService.instance.markNavigationUnavailable();
     Navigator.of(context).pushAndRemoveUntil(
       AppPageRoute<void>(page: const RestaurantAuthPage()),
@@ -78,9 +82,19 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
       final restaurant = await restaurantApi.getMyRestaurant();
       RestaurantSession.restaurant = restaurant;
 
+      RestaurantAppBootstrap? bootstrap;
+      try {
+        bootstrap = await RestaurantAppCmsSession.instance.refresh();
+      } catch (e, st) {
+        debugPrint('CMS bootstrap unavailable: $e');
+        debugPrintStack(stackTrace: st);
+        bootstrap = RestaurantAppCmsSession.instance.state.value;
+      }
+
       if (!mounted) return;
       setState(() {
         _restaurantProfile = restaurant;
+        _cmsBootstrap = bootstrap;
       });
     } catch (e, st) {
       debugPrint('ERROR loading restaurant: $e');
@@ -91,6 +105,17 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
   Future<void> _setAcceptingOrders(bool value) async {
     if (_isUpdatingAcceptingOrders) return;
 
+    final cms = _cmsBootstrap;
+    if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
+      final reason = cms.featureReason('ACCEPT_ORDERS_ENABLED');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(reason ?? 'Приём заказов временно недоступен'),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isUpdatingAcceptingOrders = true;
     });
@@ -100,9 +125,17 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
       final restaurant = await restaurantApi.setAcceptingOrders(value);
       RestaurantSession.restaurant = restaurant;
 
+      RestaurantAppBootstrap? bootstrap;
+      try {
+        bootstrap = await RestaurantAppCmsSession.instance.refresh();
+      } catch (_) {
+        bootstrap = _cmsBootstrap;
+      }
+
       if (!mounted) return;
       setState(() {
         _restaurantProfile = restaurant;
+        _cmsBootstrap = bootstrap;
       });
 
       ScaffoldMessenger.of(context)
@@ -144,8 +177,8 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
       _currentTab = tab;
     });
 
-    // Profile can change the active branch. Reload runtime state whenever the
-    // user moves between shell tabs so the global banner follows that branch.
+    // The profile screen can change the active branch. Reload both restaurant
+    // runtime state and server-controlled app configuration on tab changes.
     unawaited(_loadRestaurant());
   }
 
@@ -158,8 +191,20 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
       case RestaurantBottomBarTab.profile:
         return const profile_page.RestaurantProfilePage(hideBottomBar: true);
       case RestaurantBottomBarTab.finance:
+        if (_cmsBootstrap?.featureEnabled('FINANCE_VIEW_ENABLED') == false) {
+          return _FeatureUnavailable(
+            title: 'Финансы временно недоступны',
+            reason: _cmsBootstrap?.featureReason('FINANCE_VIEW_ENABLED'),
+          );
+        }
         return const RestaurantFinancePage();
       case RestaurantBottomBarTab.support:
+        if (_cmsBootstrap?.featureEnabled('SUPPORT_ENABLED') == false) {
+          return _FeatureUnavailable(
+            title: 'Поддержка временно недоступна',
+            reason: _cmsBootstrap?.featureReason('SUPPORT_ENABLED'),
+          );
+        }
         return const RestaurantSupportPage();
     }
   }
@@ -167,6 +212,15 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
   @override
   Widget build(BuildContext context) {
     final profile = _restaurantProfile;
+    final maintenance = _cmsBootstrap?.maintenance;
+
+    if (maintenance?.blocksApp == true) {
+      return _MaintenanceGate(
+        title: maintenance?.titleRu,
+        body: maintenance?.bodyRu,
+        onRetry: _loadRestaurant,
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F1115),
@@ -175,6 +229,11 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
         bottom: false,
         child: Column(
           children: [
+            if (maintenance?.isSoft == true)
+              _SoftMaintenanceBanner(
+                title: maintenance?.titleRu,
+                body: maintenance?.bodyRu,
+              ),
             if (profile != null)
               RestaurantOperationalBanner(
                 profile: profile,
@@ -188,6 +247,146 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
       bottomNavigationBar: RestaurantBottomBar(
         currentTab: _currentTab,
         onTabSelected: _onTabSelected,
+      ),
+    );
+  }
+}
+
+class _MaintenanceGate extends StatelessWidget {
+  const _MaintenanceGate({
+    required this.title,
+    required this.body,
+    required this.onRetry,
+  });
+
+  final String? title;
+  final String? body;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF09111C),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.engineering_rounded,
+                  color: Color(0xFF65C044),
+                  size: 54,
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  (title ?? '').trim().isNotEmpty
+                      ? title!.trim()
+                      : 'Технические работы',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  (body ?? '').trim().isNotEmpty
+                      ? body!.trim()
+                      : 'Приложение временно недоступно. Попробуйте ещё раз позже.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFFB4BECC),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: onRetry,
+                  child: const Text('Проверить снова'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SoftMaintenanceBanner extends StatelessWidget {
+  const _SoftMaintenanceBanner({this.title, this.body});
+
+  final String? title;
+  final String? body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF30270F),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF6B5315)),
+      ),
+      child: Text(
+        [title, body]
+            .whereType<String>()
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .join(' · '),
+        style: const TextStyle(color: Color(0xFFF7E5A5), fontSize: 12),
+      ),
+    );
+  }
+}
+
+class _FeatureUnavailable extends StatelessWidget {
+  const _FeatureUnavailable({required this.title, this.reason});
+
+  final String title;
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: const Color(0xFF09111C),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.lock_clock_rounded,
+                color: Color(0xFF7D8AA0),
+                size: 42,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if ((reason ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  reason!.trim(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white60),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
