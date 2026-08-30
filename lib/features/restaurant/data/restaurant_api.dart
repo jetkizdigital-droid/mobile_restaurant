@@ -57,6 +57,19 @@ class RestaurantApi {
     return getMyRestaurant();
   }
 
+  Future<Map<String, dynamic>> requestAccountDeletion() async {
+    final response = await _client.post(
+      '/restaurants/me/deletion-request',
+      const <String, dynamic>{},
+    );
+
+    if (response is! Map) {
+      throw Exception('Некорректный ответ сервера');
+    }
+
+    return Map<String, dynamic>.from(response);
+  }
+
   Future<RestaurantProfileData> uploadRestaurantCover(File file) async {
     await _client.uploadFile(
       '/restaurants/me/cover',
