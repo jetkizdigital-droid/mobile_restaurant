@@ -45,6 +45,8 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   final List<File> _otherImageFiles = <File>[];
 
   bool get _isEdit => widget.item != null;
+  int get _newImagesCount =>
+      (_mainImageFile == null ? 0 : 1) + _otherImageFiles.length;
 
   @override
   void initState() {
@@ -106,6 +108,15 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
 
   Future<void> _pickMainImage() async {
     if (_isSaving) return;
+
+    if (_mainImageFile == null &&
+        _otherImageFiles.length >= RestaurantMenuApi.maxProductImages) {
+      _message(
+        'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото',
+      );
+      return;
+    }
+
     final picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked == null || !mounted) return;
     setState(() => _mainImageFile = File(picked.path));
@@ -116,11 +127,11 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     final picked = await _picker.pickMultiImage();
     if (picked.isEmpty || !mounted) return;
 
-    final selectedCount = (_mainImageFile == null ? 0 : 1) +
-        _otherImageFiles.length;
-    final available = 11 - selectedCount;
+    final available = RestaurantMenuApi.maxProductImages - _newImagesCount;
     if (available <= 0) {
-      _message('Можно выбрать максимум 11 новых фото');
+      _message(
+        'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото',
+      );
       return;
     }
 
@@ -131,7 +142,9 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     });
 
     if (picked.length > available) {
-      _message('Лишние фото не добавлены. Максимум — 11');
+      _message(
+        'Лишние фото не добавлены. Максимум — ${RestaurantMenuApi.maxProductImages}',
+      );
     }
   }
 
@@ -212,6 +225,9 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       validation = 'Введите корректную цену';
     } else if (!_isDrink && composition.isEmpty) {
       validation = 'Для блюда состав обязателен';
+    } else if (_newImagesCount > RestaurantMenuApi.maxProductImages) {
+      validation =
+          'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото';
     }
 
     if (validation != null) {
@@ -279,11 +295,20 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       }
 
       if (_mainImageFile != null || _otherImageFiles.isNotEmpty) {
+        // Backend requires one main image whenever the gallery is replaced.
+        // If the user picked only additional photos, promote the first one.
+        final mainImage =
+            _mainImageFile ??
+            (_otherImageFiles.isNotEmpty ? _otherImageFiles.first : null);
+        final otherImages = _mainImageFile != null
+            ? List<File>.from(_otherImageFiles)
+            : _otherImageFiles.skip(1).toList(growable: false);
+
         await _api.replaceProductImages(
           restaurantId: widget.restaurantId,
           productId: productId,
-          mainImage: _mainImageFile,
-          otherImages: _otherImageFiles,
+          mainImage: mainImage,
+          otherImages: otherImages,
         );
       }
 
@@ -379,17 +404,18 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                       _existingImagesGrid(),
                     ],
                     _label(_isEdit ? 'Новая галерея' : 'Фото блюда'),
-                    if (_isEdit)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 10),
-                        child: Text(
-                          'Если выбрать новые фото, текущая галерея будет заменена.',
-                          style: TextStyle(
-                            color: Color(0xFF9AA7B9),
-                            fontSize: 12,
-                          ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        _isEdit
+                            ? 'Если выбрать новые фото, текущая галерея будет заменена. Максимум — ${RestaurantMenuApi.maxProductImages} фото.'
+                            : 'Можно добавить до ${RestaurantMenuApi.maxProductImages} фото блюда.',
+                        style: const TextStyle(
+                          color: Color(0xFF9AA7B9),
+                          fontSize: 12,
                         ),
                       ),
+                    ),
                     _imagePickerCard(),
                     if (_errorText != null) ...[
                       const SizedBox(height: 14),
@@ -632,6 +658,18 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Выбрано: $_newImagesCount/${RestaurantMenuApi.maxProductImages}',
+              style: const TextStyle(
+                color: Color(0xFF93A0B4),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
           if (_mainImageFile != null) ...[
             const SizedBox(height: 10),
