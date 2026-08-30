@@ -153,6 +153,10 @@ class RestaurantProfileData {
         isBlocked;
   }
 
+  bool get isResubmittedForReview =>
+      normalizedOnboardingStatus == 'PENDING_REVIEW' &&
+      (onboardingNote ?? '').trim().isNotEmpty;
+
   bool get hasIndividualCommission => restaurantCommissionPctOverride != null;
 
   String get commissionTypeLabel =>
@@ -178,6 +182,9 @@ class RestaurantProfileData {
       case 'DRAFT':
         return 'Заявка не завершена';
       case 'PENDING_REVIEW':
+        return isResubmittedForReview
+            ? 'Повторная проверка'
+            : 'Заявка на проверке';
       case '':
         return 'Заявка на проверке';
       default:
@@ -187,7 +194,9 @@ class RestaurantProfileData {
 
   String get onboardingDescription {
     final note = (onboardingNote ?? '').trim();
-    if (note.isNotEmpty) return note;
+    if (note.isNotEmpty && normalizedOnboardingStatus != 'PENDING_REVIEW') {
+      return note;
+    }
 
     switch (normalizedOnboardingStatus) {
       case 'APPROVED':
@@ -208,6 +217,10 @@ class RestaurantProfileData {
             : 'Ресторан скрыт из клиентского приложения. Для уточнения обратитесь в поддержку.';
       case 'REJECTED':
         return 'Исправьте данные ресторана и отправьте заявку на повторную проверку.';
+      case 'PENDING_REVIEW':
+        return isResubmittedForReview
+            ? 'Исправления отправлены. Ожидайте решения администратора.'
+            : 'Заявка отправлена. Ожидайте решения администратора.';
       default:
         return 'После одобрения ресторан сможет появиться в JETKIZ и принимать заказы.';
     }
