@@ -39,6 +39,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     _OrderFilterItem(code: 'READY', label: 'Готовы'),
     _OrderFilterItem(code: 'ON_THE_WAY', label: 'В пути'),
     _OrderFilterItem(code: 'DELIVERED', label: 'Доставлены'),
+    _OrderFilterItem(code: 'REJECTED', label: 'Отклонены'),
     _OrderFilterItem(code: 'CANCELED', label: 'Отменены'),
   ];
 
@@ -144,8 +145,9 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
   Future<void> _changeStatus(
     Map<String, dynamic> order,
-    String nextStatus,
-  ) async {
+    String nextStatus, {
+    String? rejectionReason,
+  }) async {
     final orderId = _string(order['id']);
 
     if (orderId.isEmpty) {
@@ -160,10 +162,15 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     });
 
     try {
-      final updated = await _ordersApi.updateOrderStatus(
-        id: orderId,
-        status: nextStatus,
-      );
+      final updated = nextStatus == 'REJECTED'
+          ? await _ordersApi.rejectOrder(
+              id: orderId,
+              reason: rejectionReason ?? '',
+            )
+          : await _ordersApi.updateOrderStatus(
+              id: orderId,
+              status: nextStatus,
+            );
 
       if (!mounted) return;
 
@@ -192,38 +199,83 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   }
 
   Future<void> _confirmReject(Map<String, dynamic> order) async {
-    final ok = await showDialog<bool>(
+    final controller = TextEditingController();
+
+    final reason = await showDialog<String>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF111827),
-          title: const Text(
-            'Отклонить заказ?',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: const Text(
-            'Новый заказ будет отклонён. Продолжить?',
-            style: TextStyle(color: Color(0xFFCBD5E1)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Нет'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final canSubmit = controller.text.trim().isNotEmpty;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF111827),
+              title: const Text(
+                'Отклонить заказ?',
+                style: TextStyle(color: Colors.white),
               ),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Отклонить'),
-            ),
-          ],
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Укажите причину отклонения. Она будет сохранена в истории заказа.',
+                    style: TextStyle(color: Color(0xFFCBD5E1)),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 250,
+                    maxLines: 3,
+                    onChanged: (_) => setDialogState(() {}),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Например: блюдо закончилось',
+                      hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                      filled: true,
+                      fillColor: const Color(0xFF0B1220),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF334155)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF334155)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFDC2626)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                  ),
+                  onPressed: canSubmit
+                      ? () => Navigator.of(context).pop(controller.text.trim())
+                      : null,
+                  child: const Text('Отклонить'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    if (ok == true) {
-      await _changeStatus(order, 'REJECTED');
+    controller.dispose();
+
+    if (reason != null && reason.trim().isNotEmpty) {
+      await _changeStatus(order, 'REJECTED', rejectionReason: reason);
     }
   }
 
