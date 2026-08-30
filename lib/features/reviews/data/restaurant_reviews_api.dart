@@ -50,6 +50,37 @@ class RestaurantReviewsApi {
       meta: meta,
     );
   }
+
+  Future<ReviewResponse> saveResponse({
+    required String reviewId,
+    required String text,
+  }) async {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      throw Exception('Введите текст ответа');
+    }
+
+    final dynamic response = await _apiClient.post(
+      '/restaurants/reviews/$reviewId/response',
+      <String, dynamic>{'text': normalized},
+    );
+
+    if (response is! Map) {
+      throw Exception('Некорректный ответ сервера');
+    }
+
+    final json = Map<String, dynamic>.from(response);
+    final item = json['item'];
+    if (item is! Map) {
+      throw Exception('Сервер не вернул сохранённый ответ');
+    }
+
+    return ReviewResponse.fromJson(Map<String, dynamic>.from(item));
+  }
+
+  Future<void> deleteResponse({required String reviewId}) async {
+    await _apiClient.delete('/restaurants/reviews/$reviewId/response');
+  }
 }
 
 class RestaurantReviewsPageData {
@@ -72,6 +103,8 @@ class ReviewsMeta {
   final int page;
   final int limit;
   final int total;
+
+  bool get hasMore => page * limit < total;
 
   factory ReviewsMeta.fromJson(Map<String, dynamic> json) {
     return ReviewsMeta(
