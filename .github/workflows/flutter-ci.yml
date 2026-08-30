@@ -1,0 +1,45 @@
+name: Restaurant Flutter CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/restaurant-production-audit
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/flutter-ci.yml'
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Tests
+        run: flutter test
+
+      - name: Build debug APK
+        run: flutter build apk --debug
