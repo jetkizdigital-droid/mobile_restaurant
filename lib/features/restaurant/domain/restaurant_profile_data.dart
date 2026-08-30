@@ -14,6 +14,9 @@ class RestaurantProfileData {
   final String? blockReason;
   final bool? isInApp;
   final bool? isAcceptingOrders;
+  final bool? isWithinWorkingHours;
+  final bool? canAcceptOrders;
+  final bool? effectiveAcceptingOrders;
   final bool? isPinned;
   final int? sortOrder;
   final num? effectiveRestaurantCommissionPct;
@@ -41,6 +44,9 @@ class RestaurantProfileData {
     this.blockReason,
     this.isInApp,
     this.isAcceptingOrders,
+    this.isWithinWorkingHours,
+    this.canAcceptOrders,
+    this.effectiveAcceptingOrders,
     this.isPinned,
     this.sortOrder,
     this.effectiveRestaurantCommissionPct,
@@ -68,6 +74,9 @@ class RestaurantProfileData {
       blockReason: _nullableString(json['blockReason']),
       isInApp: json['isInApp'] as bool?,
       isAcceptingOrders: json['isAcceptingOrders'] as bool?,
+      isWithinWorkingHours: json['isWithinWorkingHours'] as bool?,
+      canAcceptOrders: json['canAcceptOrders'] as bool?,
+      effectiveAcceptingOrders: json['effectiveAcceptingOrders'] as bool?,
       isPinned: json['isPinned'] as bool?,
       sortOrder: json['sortOrder'] is int
           ? json['sortOrder'] as int
@@ -116,14 +125,26 @@ class RestaurantProfileData {
       (onboardingStatus ?? '').trim().toUpperCase();
 
   bool get isApproved => normalizedOnboardingStatus == 'APPROVED';
-  bool get isBlocked => blockedAt != null || normalizedOnboardingStatus == 'BLOCKED';
+  bool get isBlocked =>
+      blockedAt != null || normalizedOnboardingStatus == 'BLOCKED';
   bool get isPublished => isInApp == true;
   bool get isTakingOrders => isAcceptingOrders == true;
+  bool get isOpenBySchedule => isWithinWorkingHours ?? status == 'OPEN';
+  bool get isEffectivelyTakingOrders =>
+      effectiveAcceptingOrders ??
+      (isTakingOrders && isOpenBySchedule && isApproved && isPublished && !isBlocked);
 
-  bool get canEnableAcceptingOrders => isApproved && isPublished && !isBlocked;
+  bool get canEnableAcceptingOrders =>
+      (canAcceptOrders ?? (isApproved && isPublished && !isBlocked && isOpenBySchedule));
+
+  bool get canResubmitForReview =>
+      normalizedOnboardingStatus == 'REJECTED' ||
+      normalizedOnboardingStatus == 'NEEDS_CHANGES';
 
   bool get needsOnboardingAttention {
-    return normalizedOnboardingStatus == 'NEEDS_CHANGES' || isBlocked;
+    return normalizedOnboardingStatus == 'NEEDS_CHANGES' ||
+        normalizedOnboardingStatus == 'REJECTED' ||
+        isBlocked;
   }
 
   String get onboardingTitle {
@@ -155,17 +176,20 @@ class RestaurantProfileData {
         if (!isPublished) {
           return 'Ресторан одобрен, но пока не опубликован в JETKIZ.';
         }
+        if (!isOpenBySchedule) {
+          return 'Сейчас ресторан закрыт по графику. Чтобы принимать заказы, измените график работы.';
+        }
         return isTakingOrders
             ? 'Ресторан опубликован и принимает заказы.'
             : 'Ресторан опубликован. Приём заказов приостановлен.';
       case 'NEEDS_CHANGES':
-        return 'Исправьте данные ресторана и дождитесь повторной проверки.';
+        return 'Исправьте данные ресторана и отправьте заявку на повторную проверку.';
       case 'BLOCKED':
         return (blockReason ?? '').trim().isNotEmpty
             ? blockReason!.trim()
-            : 'Доступ к рабочим функциям ресторана ограничен.';
+            : 'Ресторан скрыт из клиентского приложения. Для уточнения обратитесь в поддержку.';
       case 'REJECTED':
-        return 'Свяжитесь с поддержкой, если хотите уточнить причину.';
+        return 'Исправьте данные ресторана и отправьте заявку на повторную проверку.';
       default:
         return 'После одобрения ресторан сможет появиться в JETKIZ и принимать заказы.';
     }
@@ -217,6 +241,9 @@ class RestaurantProfileData {
       'blockReason': blockReason,
       'isInApp': isInApp,
       'isAcceptingOrders': isAcceptingOrders,
+      'isWithinWorkingHours': isWithinWorkingHours,
+      'canAcceptOrders': canAcceptOrders,
+      'effectiveAcceptingOrders': effectiveAcceptingOrders,
       'isPinned': isPinned,
       'sortOrder': sortOrder,
       'effectiveRestaurantCommissionPct': effectiveRestaurantCommissionPct,
@@ -244,6 +271,9 @@ class RestaurantProfileData {
     String? blockReason,
     bool? isInApp,
     bool? isAcceptingOrders,
+    bool? isWithinWorkingHours,
+    bool? canAcceptOrders,
+    bool? effectiveAcceptingOrders,
     bool? isPinned,
     int? sortOrder,
     num? effectiveRestaurantCommissionPct,
@@ -279,10 +309,15 @@ class RestaurantProfileData {
       blockReason: clearBlockReason ? null : (blockReason ?? this.blockReason),
       isInApp: isInApp ?? this.isInApp,
       isAcceptingOrders: isAcceptingOrders ?? this.isAcceptingOrders,
+      isWithinWorkingHours:
+          isWithinWorkingHours ?? this.isWithinWorkingHours,
+      canAcceptOrders: canAcceptOrders ?? this.canAcceptOrders,
+      effectiveAcceptingOrders:
+          effectiveAcceptingOrders ?? this.effectiveAcceptingOrders,
       isPinned: isPinned ?? this.isPinned,
       sortOrder: sortOrder ?? this.sortOrder,
-      effectiveRestaurantCommissionPct:
-          effectiveRestaurantCommissionPct ?? this.effectiveRestaurantCommissionPct,
+      effectiveRestaurantCommissionPct: effectiveRestaurantCommissionPct ??
+          this.effectiveRestaurantCommissionPct,
       imageUrl: clearImageUrl ? null : (imageUrl ?? this.imageUrl),
       localImagePath: clearLocalImagePath
           ? null
