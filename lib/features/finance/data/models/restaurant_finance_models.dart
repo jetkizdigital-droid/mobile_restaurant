@@ -59,7 +59,8 @@ class RestaurantFinanceRestaurant {
     required this.nameKk,
     required this.number,
     required this.status,
-    this.restaurantCommissionPctOverride,
+    this.individualRestaurantCommissionPctOverride,
+    this.effectiveRestaurantCommissionPct,
   });
 
   final String id;
@@ -68,7 +69,8 @@ class RestaurantFinanceRestaurant {
   final String nameKk;
   final int number;
   final String status;
-  final int? restaurantCommissionPctOverride;
+  final int? individualRestaurantCommissionPctOverride;
+  final int? effectiveRestaurantCommissionPct;
 
   factory RestaurantFinanceRestaurant.fromJson(Map<String, dynamic> json) {
     return RestaurantFinanceRestaurant(
@@ -78,8 +80,11 @@ class RestaurantFinanceRestaurant {
       nameKk: _toStringValue(json['nameKk']),
       number: _toInt(json['number']),
       status: _toStringValue(json['status']),
-      restaurantCommissionPctOverride: _toNullableInt(
+      individualRestaurantCommissionPctOverride: _toNullableInt(
         json['restaurantCommissionPctOverride'],
+      ),
+      effectiveRestaurantCommissionPct: _toNullableInt(
+        json['effectiveRestaurantCommissionPct'],
       ),
     );
   }
@@ -90,7 +95,15 @@ class RestaurantFinanceRestaurant {
     return nameKk.trim();
   }
 
-  bool get hasIndividualCommission => restaurantCommissionPctOverride != null;
+  bool get hasIndividualCommission =>
+      individualRestaurantCommissionPctOverride != null;
+
+  // Backward-compatible UI accessor. Existing finance widgets use this field
+  // as the rate to display, so return the effective rate while preserving the
+  // raw override separately for the "individual/general" label.
+  int? get restaurantCommissionPctOverride =>
+      effectiveRestaurantCommissionPct ??
+      individualRestaurantCommissionPctOverride;
 }
 
 class RestaurantFinancePeriod {
