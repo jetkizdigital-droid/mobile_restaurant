@@ -5,16 +5,20 @@ class RestaurantProfileData {
   final String? phone;
   final String? address;
 
-  // New backend fields
   final String? workingHours;
   final String? coverImageUrl;
   final String? status;
+  final String? onboardingStatus;
+  final String? onboardingNote;
+  final DateTime? blockedAt;
+  final String? blockReason;
   final bool? isInApp;
+  final bool? isAcceptingOrders;
   final bool? isPinned;
   final int? sortOrder;
   final num? effectiveRestaurantCommissionPct;
 
-  // Legacy compatibility fields
+  // Legacy compatibility fields.
   final String? imageUrl;
   final String? localImagePath;
   final List<String>? workDays;
@@ -31,7 +35,12 @@ class RestaurantProfileData {
     this.workingHours,
     this.coverImageUrl,
     this.status,
+    this.onboardingStatus,
+    this.onboardingNote,
+    this.blockedAt,
+    this.blockReason,
     this.isInApp,
+    this.isAcceptingOrders,
     this.isPinned,
     this.sortOrder,
     this.effectiveRestaurantCommissionPct,
@@ -50,25 +59,24 @@ class RestaurantProfileData {
       nameKk: json['nameKk']?.toString(),
       phone: json['phone']?.toString(),
       address: json['address']?.toString(),
-
-      // New backend contract
       workingHours: json['workingHours']?.toString(),
       coverImageUrl: json['coverImageUrl']?.toString(),
       status: json['status']?.toString(),
+      onboardingStatus: json['onboardingStatus']?.toString(),
+      onboardingNote: _nullableString(json['onboardingNote']),
+      blockedAt: _toDateTime(json['blockedAt']),
+      blockReason: _nullableString(json['blockReason']),
       isInApp: json['isInApp'] as bool?,
+      isAcceptingOrders: json['isAcceptingOrders'] as bool?,
       isPinned: json['isPinned'] as bool?,
       sortOrder: json['sortOrder'] is int
           ? json['sortOrder'] as int
           : int.tryParse(json['sortOrder']?.toString() ?? ''),
       effectiveRestaurantCommissionPct:
           json['effectiveRestaurantCommissionPct'] as num?,
-
-      // Legacy compatibility
       imageUrl: json['imageUrl']?.toString(),
       localImagePath: json['localImagePath']?.toString(),
-      workDays: (json['workDays'] as List?)
-          ?.map((e) => e.toString())
-          .toList(),
+      workDays: (json['workDays'] as List?)?.map((e) => e.toString()).toList(),
       workingHoursFrom: json['workingHoursFrom']?.toString(),
       workingHoursTo: json['workingHoursTo']?.toString(),
       imageVersion: json['imageVersion'] is int
@@ -99,11 +107,68 @@ class RestaurantProfileData {
 
     final from = (workingHoursFrom ?? '').trim();
     final to = (workingHoursTo ?? '').trim();
-    if (from.isNotEmpty && to.isNotEmpty) {
-      return '$from - $to';
-    }
+    if (from.isNotEmpty && to.isNotEmpty) return '$from - $to';
 
     return 'Время не указано';
+  }
+
+  String get normalizedOnboardingStatus =>
+      (onboardingStatus ?? '').trim().toUpperCase();
+
+  bool get isApproved => normalizedOnboardingStatus == 'APPROVED';
+  bool get isBlocked => blockedAt != null || normalizedOnboardingStatus == 'BLOCKED';
+  bool get isPublished => isInApp == true;
+  bool get isTakingOrders => isAcceptingOrders == true;
+
+  bool get canEnableAcceptingOrders => isApproved && isPublished && !isBlocked;
+
+  bool get needsOnboardingAttention {
+    return normalizedOnboardingStatus == 'NEEDS_CHANGES' || isBlocked;
+  }
+
+  String get onboardingTitle {
+    switch (normalizedOnboardingStatus) {
+      case 'APPROVED':
+        return 'Ресторан одобрен';
+      case 'NEEDS_CHANGES':
+        return 'Нужны изменения';
+      case 'BLOCKED':
+        return 'Ресторан заблокирован';
+      case 'REJECTED':
+        return 'Заявка отклонена';
+      case 'DRAFT':
+        return 'Заявка не завершена';
+      case 'PENDING_REVIEW':
+      case '':
+        return 'Заявка на проверке';
+      default:
+        return normalizedOnboardingStatus;
+    }
+  }
+
+  String get onboardingDescription {
+    final note = (onboardingNote ?? '').trim();
+    if (note.isNotEmpty) return note;
+
+    switch (normalizedOnboardingStatus) {
+      case 'APPROVED':
+        if (!isPublished) {
+          return 'Ресторан одобрен, но пока не опубликован в JETKIZ.';
+        }
+        return isTakingOrders
+            ? 'Ресторан опубликован и принимает заказы.'
+            : 'Ресторан опубликован. Приём заказов приостановлен.';
+      case 'NEEDS_CHANGES':
+        return 'Исправьте данные ресторана и дождитесь повторной проверки.';
+      case 'BLOCKED':
+        return (blockReason ?? '').trim().isNotEmpty
+            ? blockReason!.trim()
+            : 'Доступ к рабочим функциям ресторана ограничен.';
+      case 'REJECTED':
+        return 'Свяжитесь с поддержкой, если хотите уточнить причину.';
+      default:
+        return 'После одобрения ресторан сможет появиться в JETKIZ и принимать заказы.';
+    }
   }
 
   String get displayStatus {
@@ -146,7 +211,12 @@ class RestaurantProfileData {
       'workingHours': workingHours,
       'coverImageUrl': coverImageUrl,
       'status': status,
+      'onboardingStatus': onboardingStatus,
+      'onboardingNote': onboardingNote,
+      'blockedAt': blockedAt?.toIso8601String(),
+      'blockReason': blockReason,
       'isInApp': isInApp,
+      'isAcceptingOrders': isAcceptingOrders,
       'isPinned': isPinned,
       'sortOrder': sortOrder,
       'effectiveRestaurantCommissionPct': effectiveRestaurantCommissionPct,
@@ -168,7 +238,12 @@ class RestaurantProfileData {
     String? workingHours,
     String? coverImageUrl,
     String? status,
+    String? onboardingStatus,
+    String? onboardingNote,
+    DateTime? blockedAt,
+    String? blockReason,
     bool? isInApp,
+    bool? isAcceptingOrders,
     bool? isPinned,
     int? sortOrder,
     num? effectiveRestaurantCommissionPct,
@@ -181,6 +256,9 @@ class RestaurantProfileData {
     bool clearCoverImageUrl = false,
     bool clearImageUrl = false,
     bool clearLocalImagePath = false,
+    bool clearOnboardingNote = false,
+    bool clearBlockedAt = false,
+    bool clearBlockReason = false,
   }) {
     return RestaurantProfileData(
       id: id ?? this.id,
@@ -193,12 +271,18 @@ class RestaurantProfileData {
           ? null
           : (coverImageUrl ?? this.coverImageUrl),
       status: status ?? this.status,
+      onboardingStatus: onboardingStatus ?? this.onboardingStatus,
+      onboardingNote: clearOnboardingNote
+          ? null
+          : (onboardingNote ?? this.onboardingNote),
+      blockedAt: clearBlockedAt ? null : (blockedAt ?? this.blockedAt),
+      blockReason: clearBlockReason ? null : (blockReason ?? this.blockReason),
       isInApp: isInApp ?? this.isInApp,
+      isAcceptingOrders: isAcceptingOrders ?? this.isAcceptingOrders,
       isPinned: isPinned ?? this.isPinned,
       sortOrder: sortOrder ?? this.sortOrder,
       effectiveRestaurantCommissionPct:
-          effectiveRestaurantCommissionPct ??
-              this.effectiveRestaurantCommissionPct,
+          effectiveRestaurantCommissionPct ?? this.effectiveRestaurantCommissionPct,
       imageUrl: clearImageUrl ? null : (imageUrl ?? this.imageUrl),
       localImagePath: clearLocalImagePath
           ? null
@@ -208,5 +292,17 @@ class RestaurantProfileData {
       workingHoursTo: workingHoursTo ?? this.workingHoursTo,
       imageVersion: imageVersion ?? this.imageVersion,
     );
+  }
+
+  static String? _nullableString(dynamic value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty || text.toLowerCase() == 'null'
+        ? null
+        : text;
+  }
+
+  static DateTime? _toDateTime(dynamic value) {
+    final text = _nullableString(value);
+    return text == null ? null : DateTime.tryParse(text);
   }
 }
