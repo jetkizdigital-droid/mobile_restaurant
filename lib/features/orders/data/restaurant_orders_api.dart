@@ -14,7 +14,7 @@ class RestaurantOrdersApi {
     String? status,
     bool fetchAllPages = true,
   }) async {
-    final safeLimit = limit.clamp(1, 100);
+    final safeLimit = limit.clamp(1, 100).toInt();
     final result = <Map<String, dynamic>>[];
     var currentPage = page < 1 ? 1 : page;
 
