@@ -32,11 +32,14 @@ class RestaurantShellPage extends StatefulWidget {
   State<RestaurantShellPage> createState() => _RestaurantShellPageState();
 }
 
-class _RestaurantShellPageState extends State<RestaurantShellPage> {
+class _RestaurantShellPageState extends State<RestaurantShellPage>
+    with WidgetsBindingObserver {
   late RestaurantBottomBarTab _currentTab;
   StreamSubscription<void>? _sessionExpiredSubscription;
+  Timer? _ordersRefreshTimer;
   bool _openingLogin = false;
   bool _isUpdatingAcceptingOrders = false;
+  int _ordersReloadKey = 0;
   RestaurantProfileData? _restaurantProfile;
   RestaurantAppBootstrap? _cmsBootstrap;
 
@@ -51,18 +54,39 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentTab = widget.initialTab;
     _sessionExpiredSubscription = ApiClient.instance.sessionExpiredEvents
         .listen((_) => _openLogin());
+    _ordersRefreshTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _refreshActiveOrders(),
+    );
     unawaited(RestaurantPushNotificationService.instance.markNavigationReady());
     unawaited(_loadRestaurant());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _ordersRefreshTimer?.cancel();
     _sessionExpiredSubscription?.cancel();
     RestaurantPushNotificationService.instance.markNavigationUnavailable();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_loadRestaurant());
+    _refreshActiveOrders();
+  }
+
+  void _refreshActiveOrders() {
+    if (!mounted || _currentTab != RestaurantBottomBarTab.orders) return;
+    setState(() {
+      _ordersReloadKey += 1;
+    });
   }
 
   void _openLogin() {
@@ -175,6 +199,9 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
 
     setState(() {
       _currentTab = tab;
+      if (tab == RestaurantBottomBarTab.orders) {
+        _ordersReloadKey += 1;
+      }
     });
 
     // The profile screen can change the active branch. Reload both restaurant
@@ -185,7 +212,10 @@ class _RestaurantShellPageState extends State<RestaurantShellPage> {
   Widget _buildPage() {
     switch (_currentTab) {
       case RestaurantBottomBarTab.orders:
-        return const orders_page.RestaurantOrdersPage(hideBottomBar: true);
+        return orders_page.RestaurantOrdersPage(
+          key: ValueKey('orders_$_ordersReloadKey'),
+          hideBottomBar: true,
+        );
       case RestaurantBottomBarTab.menu:
         return const RestaurantMenuPage();
       case RestaurantBottomBarTab.profile:
