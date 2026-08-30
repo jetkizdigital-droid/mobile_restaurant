@@ -52,6 +52,11 @@ class RestaurantApi {
     return getMyRestaurant();
   }
 
+  Future<RestaurantProfileData> resubmitForReview() async {
+    await _client.post('/restaurants/me/onboarding/resubmit', const {});
+    return getMyRestaurant();
+  }
+
   Future<RestaurantProfileData> uploadRestaurantCover(File file) async {
     await _client.uploadFile(
       '/restaurants/me/cover',
