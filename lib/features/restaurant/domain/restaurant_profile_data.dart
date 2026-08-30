@@ -19,6 +19,7 @@ class RestaurantProfileData {
   final bool? effectiveAcceptingOrders;
   final bool? isPinned;
   final int? sortOrder;
+  final num? restaurantCommissionPctOverride;
   final num? effectiveRestaurantCommissionPct;
 
   // Legacy compatibility fields.
@@ -49,6 +50,7 @@ class RestaurantProfileData {
     this.effectiveAcceptingOrders,
     this.isPinned,
     this.sortOrder,
+    this.restaurantCommissionPctOverride,
     this.effectiveRestaurantCommissionPct,
     this.imageUrl,
     this.localImagePath,
@@ -81,8 +83,12 @@ class RestaurantProfileData {
       sortOrder: json['sortOrder'] is int
           ? json['sortOrder'] as int
           : int.tryParse(json['sortOrder']?.toString() ?? ''),
-      effectiveRestaurantCommissionPct:
-          json['effectiveRestaurantCommissionPct'] as num?,
+      restaurantCommissionPctOverride: _toNum(
+        json['restaurantCommissionPctOverride'],
+      ),
+      effectiveRestaurantCommissionPct: _toNum(
+        json['effectiveRestaurantCommissionPct'],
+      ),
       imageUrl: json['imageUrl']?.toString(),
       localImagePath: json['localImagePath']?.toString(),
       workDays: (json['workDays'] as List?)?.map((e) => e.toString()).toList(),
@@ -145,6 +151,18 @@ class RestaurantProfileData {
     return normalizedOnboardingStatus == 'NEEDS_CHANGES' ||
         normalizedOnboardingStatus == 'REJECTED' ||
         isBlocked;
+  }
+
+  bool get hasIndividualCommission => restaurantCommissionPctOverride != null;
+
+  String get commissionTypeLabel =>
+      hasIndividualCommission ? 'Индивидуальная' : 'Общая';
+
+  String get displayCommission {
+    final value = effectiveRestaurantCommissionPct;
+    if (value == null || !value.isFinite) return 'Не указана';
+    final rounded = value.round();
+    return '$rounded%';
   }
 
   String get onboardingTitle {
@@ -246,6 +264,7 @@ class RestaurantProfileData {
       'effectiveAcceptingOrders': effectiveAcceptingOrders,
       'isPinned': isPinned,
       'sortOrder': sortOrder,
+      'restaurantCommissionPctOverride': restaurantCommissionPctOverride,
       'effectiveRestaurantCommissionPct': effectiveRestaurantCommissionPct,
       'imageUrl': imageUrl,
       'localImagePath': localImagePath,
@@ -276,6 +295,7 @@ class RestaurantProfileData {
     bool? effectiveAcceptingOrders,
     bool? isPinned,
     int? sortOrder,
+    num? restaurantCommissionPctOverride,
     num? effectiveRestaurantCommissionPct,
     String? imageUrl,
     String? localImagePath,
@@ -289,6 +309,7 @@ class RestaurantProfileData {
     bool clearOnboardingNote = false,
     bool clearBlockedAt = false,
     bool clearBlockReason = false,
+    bool clearRestaurantCommissionPctOverride = false,
   }) {
     return RestaurantProfileData(
       id: id ?? this.id,
@@ -316,6 +337,9 @@ class RestaurantProfileData {
           effectiveAcceptingOrders ?? this.effectiveAcceptingOrders,
       isPinned: isPinned ?? this.isPinned,
       sortOrder: sortOrder ?? this.sortOrder,
+      restaurantCommissionPctOverride: clearRestaurantCommissionPctOverride
+          ? null
+          : (restaurantCommissionPctOverride ?? this.restaurantCommissionPctOverride),
       effectiveRestaurantCommissionPct: effectiveRestaurantCommissionPct ??
           this.effectiveRestaurantCommissionPct,
       imageUrl: clearImageUrl ? null : (imageUrl ?? this.imageUrl),
@@ -334,6 +358,12 @@ class RestaurantProfileData {
     return text == null || text.isEmpty || text.toLowerCase() == 'null'
         ? null
         : text;
+  }
+
+  static num? _toNum(dynamic value) {
+    if (value is num) return value;
+    final text = _nullableString(value);
+    return text == null ? null : num.tryParse(text);
   }
 
   static DateTime? _toDateTime(dynamic value) {
