@@ -113,12 +113,8 @@ class RestaurantOrdersApi {
       );
     }
 
-    if (normalizedStatus == 'REJECTED' &&
-        !cms.featureEnabled('REJECT_ORDERS_ENABLED')) {
-      throw Exception(
-        cms.featureReason('REJECT_ORDERS_ENABLED') ??
-            'Отклонение заказов временно недоступно',
-      );
+    if (normalizedStatus == 'REJECTED') {
+      throw Exception('Для отклонения заказа укажите причину');
     }
 
     final dynamic response = await _apiClient.patch(
@@ -131,6 +127,35 @@ class RestaurantOrdersApi {
     }
 
     throw Exception('Некорректный ответ сервера при обновлении заказа');
+  }
+
+  Future<Map<String, dynamic>> rejectOrder({
+    required String id,
+    required String reason,
+  }) async {
+    final normalizedReason = reason.trim();
+    if (normalizedReason.isEmpty) {
+      throw Exception('Причина отклонения обязательна');
+    }
+
+    final cms = RestaurantAppCmsSession.instance;
+    if (!cms.featureEnabled('REJECT_ORDERS_ENABLED')) {
+      throw Exception(
+        cms.featureReason('REJECT_ORDERS_ENABLED') ??
+            'Отклонение заказов временно недоступно',
+      );
+    }
+
+    final dynamic response = await _apiClient.post(
+      '/orders/$id/reject',
+      <String, dynamic>{'reason': normalizedReason},
+    );
+
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+
+    throw Exception('Некорректный ответ сервера при отклонении заказа');
   }
 
   Future<Map<String, dynamic>> verifyPickup({
