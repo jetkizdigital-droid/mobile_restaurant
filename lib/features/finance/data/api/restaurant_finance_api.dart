@@ -37,18 +37,42 @@ class RestaurantFinanceApi {
     );
 
     final dynamic response = await _apiClient.get(path);
+    final payload = _asMap(response);
 
-    if (response is Map<String, dynamic>) {
-      return RestaurantFinanceResponse.fromJson(response);
+    if (payload == null) {
+      throw Exception('Некорректный ответ сервера по финансам');
     }
 
-    if (response is Map) {
-      return RestaurantFinanceResponse.fromJson(
-        Map<String, dynamic>.from(response),
-      );
-    }
+    await _mergeCurrentCommission(payload);
+    return RestaurantFinanceResponse.fromJson(payload);
+  }
 
-    throw Exception('Некорректный ответ сервера по финансам');
+  Future<void> _mergeCurrentCommission(Map<String, dynamic> payload) async {
+    try {
+      final dynamic profileResponse = await _apiClient.get('/restaurants/me');
+      final profile = _asMap(profileResponse);
+      if (profile == null) return;
+
+      final restaurant = _asMap(payload['restaurant']) ?? <String, dynamic>{};
+      if (profile.containsKey('restaurantCommissionPctOverride')) {
+        restaurant['restaurantCommissionPctOverride'] =
+            profile['restaurantCommissionPctOverride'];
+      }
+      if (profile.containsKey('effectiveRestaurantCommissionPct')) {
+        restaurant['effectiveRestaurantCommissionPct'] =
+            profile['effectiveRestaurantCommissionPct'];
+      }
+      payload['restaurant'] = restaurant;
+    } catch (_) {
+      // Finance data remains usable if the profile refresh is temporarily
+      // unavailable. The screen will simply omit an unresolved current rate.
+    }
+  }
+
+  Map<String, dynamic>? _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return Map<String, dynamic>.from(value);
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
   }
 
   String _buildPath(String basePath, Map<String, String> query) {
