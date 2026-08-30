@@ -7,11 +7,13 @@ class RestaurantOperationalBanner extends StatelessWidget {
     required this.profile,
     required this.isUpdating,
     required this.onAcceptingOrdersChanged,
+    this.onResubmit,
   });
 
   final RestaurantProfileData profile;
   final bool isUpdating;
   final ValueChanged<bool> onAcceptingOrdersChanged;
+  final VoidCallback? onResubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +22,7 @@ class RestaurantOperationalBanner extends StatelessWidget {
     final needsAttention = profile.needsOnboardingAttention;
     final published = profile.isPublished;
     final accepting = profile.isTakingOrders;
+    final openBySchedule = profile.isOpenBySchedule;
 
     final background = blocked || needsAttention
         ? const Color(0xFF3A1A1A)
@@ -34,10 +37,31 @@ class RestaurantOperationalBanner extends StatelessWidget {
     final icon = blocked || needsAttention
         ? Icons.warning_amber_rounded
         : approved
-            ? (accepting
+            ? (profile.isEffectivelyTakingOrders
                 ? Icons.storefront_rounded
                 : Icons.pause_circle_outline_rounded)
             : Icons.hourglass_top_rounded;
+
+    String title;
+    String description;
+
+    if (!approved) {
+      title = profile.onboardingTitle;
+      description = profile.onboardingDescription;
+    } else if (!published) {
+      title = profile.onboardingTitle;
+      description = profile.onboardingDescription;
+    } else if (!openBySchedule) {
+      title = 'Закрыто по графику';
+      description =
+          'Приём заказов нельзя включить вне рабочего времени. Сначала измените график ресторана.';
+    } else if (accepting) {
+      title = 'Принимаем заказы';
+      description = 'Новые заказы доступны ресторану.';
+    } else {
+      title = 'Приём заказов приостановлен';
+      description = 'Текущие заказы продолжают выполняться. Новые не принимаются.';
+    }
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -57,11 +81,7 @@ class RestaurantOperationalBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  approved
-                      ? (accepting
-                          ? 'Принимаем заказы'
-                          : 'Приём заказов приостановлен')
-                      : profile.onboardingTitle,
+                  title,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -70,12 +90,8 @@ class RestaurantOperationalBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  approved
-                      ? (published
-                          ? 'Можно временно остановить или возобновить приём заказов.'
-                          : profile.onboardingDescription)
-                      : profile.onboardingDescription,
-                  maxLines: 2,
+                  description,
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFFCBD5E1),
@@ -83,6 +99,25 @@ class RestaurantOperationalBanner extends StatelessWidget {
                     height: 1.3,
                   ),
                 ),
+                if (profile.canResubmitForReview && onResubmit != null) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: isUpdating ? null : onResubmit,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      foregroundColor: Colors.white,
+                      backgroundColor: const Color(0xFF7F1D1D),
+                    ),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text(
+                      'Отправить на повторную проверку',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -98,7 +133,9 @@ class RestaurantOperationalBanner extends StatelessWidget {
               Switch.adaptive(
                 value: accepting,
                 activeColor: const Color(0xFF65C044),
-                onChanged: onAcceptingOrdersChanged,
+                onChanged: accepting || profile.canEnableAcceptingOrders
+                    ? onAcceptingOrdersChanged
+                    : null,
               ),
           ],
         ],
