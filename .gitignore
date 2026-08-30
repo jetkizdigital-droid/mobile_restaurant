@@ -13,3 +13,8 @@ token.txt
 *.accessToken
 *.iml
 .android_repair_backup_*/
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
+*.jks
+*.keystore
