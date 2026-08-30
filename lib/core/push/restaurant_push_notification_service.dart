@@ -14,6 +14,15 @@ import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_order_details_page.dart';
 
+const String _restaurantNewOrderType = 'RESTAURANT_NEW_ORDER';
+const String _androidNewOrderChannelId = 'restaurant_new_orders_v2';
+const String _androidNewOrderChannelName = 'Новые заказы';
+const String _androidNewOrderChannelDescription =
+    'Громкие уведомления для новых заказов ресторана';
+const String _restaurantOrderSoundName = 'restaurant_order';
+const String _lastAppOpenedAtKey = 'restaurant_last_app_opened_at_ms';
+const Duration _newOrderRepeatPause = Duration(seconds: 10);
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -23,6 +32,129 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {
     // Background handler must never crash the process.
   }
+
+  // FCM already displays the first notification and plays the first sound while
+  // the app is in background/terminated. Android gets two additional alerts,
+  // giving three signals total. As soon as the user opens the app, the main
+  // isolate writes _lastAppOpenedAtKey and the remaining repeats stop.
+  if (!Platform.isAndroid || !_isRestaurantOrderData(message.data)) {
+    return;
+  }
+
+  final orderId = _readPushString(message.data['orderId']);
+  if (orderId == null) return;
+
+  final sequenceStartedAt = DateTime.now().millisecondsSinceEpoch;
+  final plugin = FlutterLocalNotificationsPlugin();
+
+  try {
+    const initializationSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+    await plugin.initialize(settings: initializationSettings);
+
+    final androidPlugin = plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _androidNewOrderChannelId,
+        _androidNewOrderChannelName,
+        description: _androidNewOrderChannelDescription,
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound(_restaurantOrderSoundName),
+        enableVibration: true,
+      ),
+    );
+  } catch (_) {
+    return;
+  }
+
+  final title =
+      _readPushString(message.notification?.title) ??
+      _readPushString(message.data['title']) ??
+      'Новый заказ';
+  final body =
+      _readPushString(message.notification?.body) ??
+      _readPushString(message.data['body']) ??
+      'Откройте заказ и подтвердите приготовление';
+  final restaurantId = _readPushString(message.data['restaurantId']);
+  final orderNumber = _readPushString(message.data['orderNumber']);
+  final notificationId = _readPushString(message.data['notificationId']);
+  final payload = jsonEncode(<String, String>{
+    'type': _restaurantNewOrderType,
+    'orderId': orderId,
+    if (restaurantId != null) 'restaurantId': restaurantId,
+    if (orderNumber != null) 'orderNumber': orderNumber,
+    if (notificationId != null) 'notificationId': notificationId,
+  });
+
+  for (var repeat = 1; repeat <= 2; repeat += 1) {
+    await Future<void>.delayed(_newOrderRepeatPause);
+
+    if (await _appWasOpenedAfter(sequenceStartedAt)) {
+      return;
+    }
+
+    try {
+      await plugin.show(
+        id: _stablePushNotificationId(orderId),
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _androidNewOrderChannelId,
+            _androidNewOrderChannelName,
+            channelDescription: _androidNewOrderChannelDescription,
+            importance: Importance.max,
+            priority: Priority.max,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound(
+              _restaurantOrderSoundName,
+            ),
+            enableVibration: true,
+            category: AndroidNotificationCategory.alarm,
+            visibility: NotificationVisibility.public,
+            ticker: 'Новый заказ',
+          ),
+        ),
+        payload: payload,
+      );
+    } catch (_) {
+      // The initial FCM notification has already been delivered. Repeat
+      // failures must not crash the background isolate.
+    }
+  }
+}
+
+Future<bool> _appWasOpenedAfter(int sequenceStartedAt) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final openedAt = prefs.getInt(_lastAppOpenedAtKey) ?? 0;
+    return openedAt >= sequenceStartedAt;
+  } catch (_) {
+    return false;
+  }
+}
+
+bool _isRestaurantOrderData(Map<String, dynamic> data) {
+  return _readPushString(data['type'])?.toUpperCase() ==
+      _restaurantNewOrderType;
+}
+
+String? _readPushString(dynamic value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty || text.toLowerCase() == 'null') return null;
+  return text;
+}
+
+int _stablePushNotificationId(String orderId) {
+  var hash = 17;
+  for (final unit in orderId.codeUnits) {
+    hash = ((hash * 31) + unit) & 0x7fffffff;
+  }
+  return hash;
 }
 
 class RestaurantPushNotificationService {
@@ -34,14 +166,14 @@ class RestaurantPushNotificationService {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  static const String restaurantNewOrderType = 'RESTAURANT_NEW_ORDER';
+  static const String restaurantNewOrderType = _restaurantNewOrderType;
 
-  static const String androidNewOrderChannelId = 'restaurant_new_orders_v2';
-  static const String androidNewOrderChannelName = 'Новые заказы';
+  static const String androidNewOrderChannelId = _androidNewOrderChannelId;
+  static const String androidNewOrderChannelName = _androidNewOrderChannelName;
   static const String androidNewOrderChannelDescription =
-      'Громкие уведомления для новых заказов ресторана';
+      _androidNewOrderChannelDescription;
 
-  static const String restaurantOrderSoundName = 'restaurant_order';
+  static const String restaurantOrderSoundName = _restaurantOrderSoundName;
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -80,10 +212,12 @@ class RestaurantPushNotificationService {
 
   Future<void> init() async {
     if (_initialized) {
+      await markAppOpened();
       return;
     }
 
     _initialized = true;
+    await markAppOpened();
 
     await _requestPermission();
     await _initLocalNotifications();
@@ -102,6 +236,18 @@ class RestaurantPushNotificationService {
     _foregroundSubscription = null;
     _openedAppSubscription = null;
     _initialized = false;
+  }
+
+  Future<void> markAppOpened() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _lastAppOpenedAtKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      // Alert cancellation is best effort and must not affect navigation.
+    }
   }
 
   Future<String?> getToken() async {
@@ -153,6 +299,7 @@ class RestaurantPushNotificationService {
   }
 
   Future<void> markNavigationReady() async {
+    await markAppOpened();
     final generation = _navigationGeneration;
     final hasSession = await _authStorage.hasSession();
     final restaurantId = await _authStorage.getSelectedRestaurantId();
@@ -302,6 +449,9 @@ class RestaurantPushNotificationService {
       return;
     }
 
+    // The app is already open. One local alert is enough; background repeats
+    // are suppressed by the opened-at timestamp.
+    await markAppOpened();
     _ordersRefreshController.add(null);
 
     final orderId = _readString(message.data['orderId']);
@@ -369,6 +519,7 @@ class RestaurantPushNotificationService {
       return;
     }
 
+    await markAppOpened();
     final orderId = _readString(message.data['orderId']);
 
     if (orderId == null) {
@@ -400,6 +551,8 @@ class RestaurantPushNotificationService {
     if (payload == null || payload.trim().isEmpty) {
       return;
     }
+
+    await markAppOpened();
 
     try {
       final decoded = jsonDecode(payload);
@@ -565,7 +718,7 @@ class RestaurantPushNotificationService {
   }
 
   int _stableNotificationId(String orderId) {
-    return orderId.hashCode & 0x7fffffff;
+    return _stablePushNotificationId(orderId);
   }
 
   String _backendPlatformName() {
