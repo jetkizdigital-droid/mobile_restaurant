@@ -5,6 +5,8 @@ import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/core/session/restaurant_session.dart';
+import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
+import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
 import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.dart';
@@ -39,6 +41,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   Timer? _ordersRefreshTimer;
   bool _openingLogin = false;
   bool _isUpdatingAcceptingOrders = false;
+  bool _isLoggingOut = false;
   int _ordersReloadKey = 0;
   RestaurantProfileData? _restaurantProfile;
   RestaurantAppBootstrap? _cmsBootstrap;
@@ -78,6 +81,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
+    unawaited(RestaurantPushNotificationService.instance.markAppOpened());
     unawaited(_loadRestaurant());
     _refreshActiveOrders();
   }
@@ -92,11 +96,52 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   void _openLogin() {
     if (!mounted || _openingLogin) return;
     _openingLogin = true;
+    RestaurantSession.restaurant = null;
     RestaurantAppCmsSession.instance.clear();
     RestaurantPushNotificationService.instance.markNavigationUnavailable();
     Navigator.of(context).pushAndRemoveUntil(
       AppPageRoute<void>(page: const RestaurantAuthPage()),
       (route) => false,
+    );
+  }
+
+  Future<void> _logout() async {
+    if (_isLoggingOut || _openingLogin) return;
+
+    setState(() {
+      _isLoggingOut = true;
+    });
+
+    try {
+      try {
+        await RestaurantPushNotificationService.instance.unregisterCurrentToken();
+      } catch (_) {
+        // Logout must remain available even when push/backend is degraded.
+      }
+
+      try {
+        await AuthApi().logout();
+      } catch (_) {
+        // Local session cleanup is authoritative for the device during
+        // maintenance or network failure.
+      }
+
+      await AuthStorage().clearTokens();
+      ApiClient.instance.clearSelectedRestaurantId();
+      if (!mounted) return;
+      _openLogin();
+    } finally {
+      if (mounted && !_openingLogin) {
+        setState(() {
+          _isLoggingOut = false;
+        });
+      }
+    }
+  }
+
+  void _openSupportDuringMaintenance() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RestaurantSupportPage()),
     );
   }
 
@@ -193,6 +238,51 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     }
   }
 
+  Future<void> _resubmitForReview() async {
+    if (_isUpdatingAcceptingOrders) return;
+
+    setState(() {
+      _isUpdatingAcceptingOrders = true;
+    });
+
+    try {
+      final restaurant = await RestaurantApi(
+        ApiClient.instance,
+      ).resubmitForReview();
+      RestaurantSession.restaurant = restaurant;
+
+      if (!mounted) return;
+      setState(() {
+        _restaurantProfile = restaurant;
+      });
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Заявка повторно отправлена на модерацию'),
+          ),
+        );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().replaceFirst('Exception: ', '').trim(),
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingAcceptingOrders = false;
+        });
+      }
+    }
+  }
+
   void _onTabSelected(RestaurantBottomBarTab tab) {
     if (_currentTab == tab) return;
     if (!_tabOrder.contains(tab)) return;
@@ -249,6 +339,9 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         title: maintenance?.titleRu,
         body: maintenance?.bodyRu,
         onRetry: _loadRestaurant,
+        onSupport: _openSupportDuringMaintenance,
+        onLogout: _logout,
+        isLoggingOut: _isLoggingOut,
       );
     }
 
@@ -269,6 +362,9 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
                 profile: profile,
                 isUpdating: _isUpdatingAcceptingOrders,
                 onAcceptingOrdersChanged: _setAcceptingOrders,
+                onResubmit: profile.canResubmitForReview
+                    ? _resubmitForReview
+                    : null,
               ),
             Expanded(child: _buildPage()),
           ],
@@ -287,11 +383,17 @@ class _MaintenanceGate extends StatelessWidget {
     required this.title,
     required this.body,
     required this.onRetry,
+    required this.onSupport,
+    required this.onLogout,
+    required this.isLoggingOut,
   });
 
   final String? title;
   final String? body;
   final Future<void> Function() onRetry;
+  final VoidCallback onSupport;
+  final Future<void> Function() onLogout;
+  final bool isLoggingOut;
 
   @override
   Widget build(BuildContext context) {
@@ -333,9 +435,33 @@ class _MaintenanceGate extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: onRetry,
-                  child: const Text('Проверить снова'),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: onRetry,
+                    child: const Text('Проверить снова'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onSupport,
+                    icon: const Icon(Icons.support_agent_rounded),
+                    label: const Text('Открыть поддержку'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: isLoggingOut ? null : onLogout,
+                  icon: isLoggingOut
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.logout_rounded),
+                  label: const Text('Выйти из аккаунта'),
                 ),
               ],
             ),
