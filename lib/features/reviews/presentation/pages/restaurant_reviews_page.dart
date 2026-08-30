@@ -19,17 +19,22 @@ class RestaurantReviewsPage extends StatefulWidget {
 }
 
 class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
+  static const int _pageSize = 20;
+
   late final RestaurantReviewsApi _api;
 
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _isLoadingMore = false;
   String? _error;
   List<RestaurantReview> _items = const [];
+  ReviewsMeta _meta = const ReviewsMeta(page: 1, limit: _pageSize, total: 0);
+  final Set<String> _mutatingReviewIds = <String>{};
 
   @override
   void initState() {
     super.initState();
-    _api = RestaurantReviewsApi(ApiClient());
+    _api = RestaurantReviewsApi(ApiClient.instance);
     _load();
   }
 
@@ -37,6 +42,7 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
     if (refresh) {
       setState(() {
         _isRefreshing = true;
+        _error = null;
       });
     } else {
       setState(() {
@@ -48,19 +54,22 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
     try {
       final result = await _api.getRestaurantReviews(
         restaurantId: widget.restaurantId,
+        page: 1,
+        limit: _pageSize,
       );
 
       if (!mounted) return;
 
       setState(() {
         _items = result.items;
+        _meta = result.meta;
         _error = null;
       });
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = _cleanError(e);
       });
     } finally {
       if (!mounted) return;
@@ -69,6 +78,205 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
         _isRefreshing = false;
       });
     }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || !_meta.hasMore) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final result = await _api.getRestaurantReviews(
+        restaurantId: widget.restaurantId,
+        page: _meta.page + 1,
+        limit: _pageSize,
+      );
+
+      if (!mounted) return;
+
+      final seen = _items.map((item) => item.id).toSet();
+      setState(() {
+        _items = <RestaurantReview>[
+          ..._items,
+          ...result.items.where((item) => seen.add(item.id)),
+        ];
+        _meta = result.meta;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage(_cleanError(e));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _editResponse(RestaurantReview review) async {
+    if (_mutatingReviewIds.contains(review.id)) return;
+
+    final controller = TextEditingController(
+      text: review.response?.text?.trim() ?? '',
+    );
+
+    final responseText = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final canSave = controller.text.trim().isNotEmpty;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF111827),
+              title: Text(
+                review.response == null
+                    ? 'Ответить на отзыв'
+                    : 'Изменить ответ',
+                style: const TextStyle(color: Colors.white),
+              ),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 6,
+                maxLength: 2000,
+                onChanged: (_) => setDialogState(() {}),
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Напишите ответ клиенту',
+                  hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                  filled: true,
+                  fillColor: const Color(0xFF0B1220),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF334155)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF65C044)),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: canSave
+                      ? () => Navigator.of(
+                            dialogContext,
+                          ).pop(controller.text.trim())
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF489F2A),
+                  ),
+                  child: const Text('Сохранить'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (responseText == null || responseText.trim().isEmpty || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _mutatingReviewIds.add(review.id);
+    });
+
+    try {
+      await _api.saveResponse(reviewId: review.id, text: responseText);
+      if (!mounted) return;
+      _showMessage(
+        review.response == null ? 'Ответ опубликован' : 'Ответ обновлён',
+      );
+      await _load(refresh: true);
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage(_cleanError(e));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _mutatingReviewIds.remove(review.id);
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteResponse(RestaurantReview review) async {
+    if (review.response == null || _mutatingReviewIds.contains(review.id)) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF111827),
+        title: const Text(
+          'Удалить ответ?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Ответ ресторана будет удалён из отзыва.',
+          style: TextStyle(color: Color(0xFFCBD5E1)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _mutatingReviewIds.add(review.id);
+    });
+
+    try {
+      await _api.deleteResponse(reviewId: review.id);
+      if (!mounted) return;
+      _showMessage('Ответ удалён');
+      await _load(refresh: true);
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage(_cleanError(e));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _mutatingReviewIds.remove(review.id);
+        });
+      }
+    }
+  }
+
+  String _cleanError(Object error) {
+    return error.toString().replaceFirst('Exception: ', '').trim();
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -100,7 +308,7 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
       );
     }
 
-    if (_error != null) {
+    if (_error != null && _items.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -136,6 +344,7 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
         color: const Color(0xFF489F2A),
         backgroundColor: const Color(0xFF121B2C),
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: const [
             SizedBox(height: 140),
             Center(
@@ -162,12 +371,37 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
       color: const Color(0xFF489F2A),
       backgroundColor: const Color(0xFF121B2C),
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        itemCount: _items.length,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        itemCount: _items.length + (_meta.hasMore ? 1 : 0),
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
+          if (index == _items.length) {
+            return Center(
+              child: OutlinedButton.icon(
+                onPressed: _isLoadingMore ? null : _loadMore,
+                icon: _isLoadingMore
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.expand_more_rounded),
+                label: Text(
+                  _isLoadingMore ? 'Загрузка…' : 'Показать ещё',
+                ),
+              ),
+            );
+          }
+
           final item = _items[index];
-          return _ReviewCard(review: item);
+          return _ReviewCard(
+            review: item,
+            isBusy: _mutatingReviewIds.contains(item.id),
+            onReply: () => _editResponse(item),
+            onEditResponse: () => _editResponse(item),
+            onDeleteResponse: () => _deleteResponse(item),
+          );
         },
       ),
     );
@@ -177,9 +411,17 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
 class _ReviewCard extends StatelessWidget {
   const _ReviewCard({
     required this.review,
+    required this.isBusy,
+    required this.onReply,
+    required this.onEditResponse,
+    required this.onDeleteResponse,
   });
 
   final RestaurantReview review;
+  final bool isBusy;
+  final VoidCallback onReply;
+  final VoidCallback onEditResponse;
+  final VoidCallback onDeleteResponse;
 
   @override
   Widget build(BuildContext context) {
@@ -277,7 +519,28 @@ class _ReviewCard extends StatelessWidget {
           ],
           if (review.response != null && review.response!.hasContent) ...[
             const SizedBox(height: 14),
-            _ResponseBlock(response: review.response!),
+            _ResponseBlock(
+              response: review.response!,
+              isBusy: isBusy,
+              onEdit: onEditResponse,
+              onDelete: onDeleteResponse,
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: isBusy ? null : onReply,
+              icon: isBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.reply_rounded),
+              label: const Text('Ответить от ресторана'),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF65C044),
+              ),
+            ),
           ],
         ],
       ),
@@ -871,9 +1134,15 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
 class _ResponseBlock extends StatelessWidget {
   const _ResponseBlock({
     required this.response,
+    required this.isBusy,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   final ReviewResponse response;
+  final bool isBusy;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -889,15 +1158,49 @@ class _ResponseBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Ответ ресторана',
-            style: TextStyle(
-              color: Color(0xFF65C044),
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Ответ ресторана',
+                  style: TextStyle(
+                    color: Color(0xFF65C044),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (isBusy)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else ...[
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Изменить ответ',
+                  onPressed: onEdit,
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: Color(0xFF93A0B4),
+                    size: 19,
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Удалить ответ',
+                  onPressed: onDelete,
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Color(0xFFFF7C7C),
+                    size: 19,
+                  ),
+                ),
+              ],
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 2),
           Text(
             response.createdByName,
             style: const TextStyle(
