@@ -118,8 +118,10 @@ class ApiClient {
     String filesFieldName = 'files',
     bool authRequired = true,
     bool isRetryAfterRefresh = false,
+    int staleTokenRetries = 2,
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
+    final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
 
     developer.log(
       'API Multipart MULTI Request: POST ${uri.path}',
@@ -129,7 +131,11 @@ class ApiClient {
     try {
       final request = http.MultipartRequest('POST', uri);
       request.headers.addAll(
-        await _buildHeaders(authRequired: authRequired, isJson: false),
+        await _buildHeaders(
+          authRequired: authRequired,
+          isJson: false,
+          accessToken: accessTokenUsed,
+        ),
       );
 
       if (mainFile != null) {
@@ -152,6 +158,23 @@ class ApiClient {
 
       _logResponse('POST', uri, response);
 
+      if (response.statusCode == 401 && authRequired) {
+        final latestAccessToken = await _storage.getAccessToken();
+        if (staleTokenRetries > 0 &&
+            _hasAccessTokenChanged(accessTokenUsed, latestAccessToken)) {
+          return uploadFiles(
+            path,
+            mainFile: mainFile,
+            files: files,
+            mainFieldName: mainFieldName,
+            filesFieldName: filesFieldName,
+            authRequired: authRequired,
+            isRetryAfterRefresh: true,
+            staleTokenRetries: staleTokenRetries - 1,
+          );
+        }
+      }
+
       if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
         final refreshResult = await _tryRefresh();
         if (refreshResult == _RefreshResult.refreshed) {
@@ -163,7 +186,11 @@ class ApiClient {
             filesFieldName: filesFieldName,
             authRequired: authRequired,
             isRetryAfterRefresh: true,
+            staleTokenRetries: 2,
           );
+        }
+        if (refreshResult == _RefreshResult.invalidSession) {
+          await _expireSession();
         }
         if (refreshResult == _RefreshResult.transientFailure) {
           throw const ApiException(
@@ -173,10 +200,9 @@ class ApiClient {
         }
       }
 
-      if (response.statusCode == 401 && authRequired && isRetryAfterRefresh) {
-        await _expireSession();
-      }
-
+      // A protected endpoint returning 401 after a successful refresh is not
+      // proof that the refresh session is invalid. Keep the tokens and surface
+      // the endpoint error. Only /auth/refresh may expire the local session.
       return _handleResponse(response);
     } on SocketException {
       throw const ApiException(
@@ -204,14 +230,17 @@ class ApiClient {
     Map<String, dynamic>? body,
     required bool authRequired,
     bool isRetryAfterRefresh = false,
+    int staleTokenRetries = 2,
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
+    final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
 
     developer.log('API Request: $method ${uri.path}', name: 'ApiClient');
 
     final headers = await _buildHeaders(
       authRequired: authRequired,
       isJson: true,
+      accessToken: accessTokenUsed,
     );
 
     late http.Response response;
@@ -309,6 +338,21 @@ class ApiClient {
       );
     }
 
+    if (response.statusCode == 401 && authRequired) {
+      final latestAccessToken = await _storage.getAccessToken();
+      if (staleTokenRetries > 0 &&
+          _hasAccessTokenChanged(accessTokenUsed, latestAccessToken)) {
+        return _send(
+          method: method,
+          path: path,
+          body: body,
+          authRequired: authRequired,
+          isRetryAfterRefresh: true,
+          staleTokenRetries: staleTokenRetries - 1,
+        );
+      }
+    }
+
     if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
       final refreshResult = await _tryRefresh();
       if (refreshResult == _RefreshResult.refreshed) {
@@ -318,7 +362,11 @@ class ApiClient {
           body: body,
           authRequired: authRequired,
           isRetryAfterRefresh: true,
+          staleTokenRetries: 2,
         );
+      }
+      if (refreshResult == _RefreshResult.invalidSession) {
+        await _expireSession();
       }
       if (refreshResult == _RefreshResult.transientFailure) {
         throw const ApiException(
@@ -328,10 +376,9 @@ class ApiClient {
       }
     }
 
-    if (response.statusCode == 401 && authRequired && isRetryAfterRefresh) {
-      await _expireSession();
-    }
-
+    // Never destroy a valid local session because one protected endpoint still
+    // returns 401 after refresh. The refresh endpoint is the only authority for
+    // deciding that the refresh session itself is invalid.
     return _handleResponse(response);
   }
 
@@ -341,14 +388,20 @@ class ApiClient {
     required String fieldName,
     required bool authRequired,
     bool isRetryAfterRefresh = false,
+    int staleTokenRetries = 2,
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
+    final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
 
     developer.log('API Multipart Request: POST ${uri.path}', name: 'ApiClient');
     try {
       final request = http.MultipartRequest('POST', uri);
       request.headers.addAll(
-        await _buildHeaders(authRequired: authRequired, isJson: false),
+        await _buildHeaders(
+          authRequired: authRequired,
+          isJson: false,
+          accessToken: accessTokenUsed,
+        ),
       );
 
       request.files.add(await _createMultipart(fieldName, file));
@@ -365,6 +418,21 @@ class ApiClient {
 
       _logResponse('POST', uri, response);
 
+      if (response.statusCode == 401 && authRequired) {
+        final latestAccessToken = await _storage.getAccessToken();
+        if (staleTokenRetries > 0 &&
+            _hasAccessTokenChanged(accessTokenUsed, latestAccessToken)) {
+          return _sendMultipart(
+            path: path,
+            file: file,
+            fieldName: fieldName,
+            authRequired: authRequired,
+            isRetryAfterRefresh: true,
+            staleTokenRetries: staleTokenRetries - 1,
+          );
+        }
+      }
+
       if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
         final refreshResult = await _tryRefresh();
         if (refreshResult == _RefreshResult.refreshed) {
@@ -374,7 +442,11 @@ class ApiClient {
             fieldName: fieldName,
             authRequired: authRequired,
             isRetryAfterRefresh: true,
+            staleTokenRetries: 2,
           );
+        }
+        if (refreshResult == _RefreshResult.invalidSession) {
+          await _expireSession();
         }
         if (refreshResult == _RefreshResult.transientFailure) {
           throw const ApiException(
@@ -382,10 +454,6 @@ class ApiClient {
             isTransportFailure: true,
           );
         }
-      }
-
-      if (response.statusCode == 401 && authRequired && isRetryAfterRefresh) {
-        await _expireSession();
       }
 
       return _handleResponse(response);
@@ -412,6 +480,7 @@ class ApiClient {
   Future<Map<String, String>> _buildHeaders({
     required bool authRequired,
     required bool isJson,
+    String? accessToken,
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
 
@@ -420,9 +489,9 @@ class ApiClient {
     }
 
     if (authRequired) {
-      final accessToken = await _storage.getAccessToken();
-      if (accessToken != null && accessToken.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $accessToken';
+      final resolvedAccessToken = accessToken ?? await _storage.getAccessToken();
+      if (resolvedAccessToken != null && resolvedAccessToken.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $resolvedAccessToken';
       }
     }
 
@@ -476,9 +545,8 @@ class ApiClient {
   }
 
   Future<_RefreshResult> _performRefresh() async {
-    final refreshToken = await _storage.getRefreshToken();
+    final refreshToken = (await _storage.getRefreshToken())?.trim();
     if (refreshToken == null || refreshToken.isEmpty) {
-      await _expireSession();
       return _RefreshResult.invalidSession;
     }
 
@@ -502,8 +570,8 @@ class ApiClient {
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
           data is Map<String, dynamic>) {
-        final accessToken = data['accessToken']?.toString();
-        final newRefreshToken = data['refreshToken']?.toString();
+        final accessToken = data['accessToken']?.toString().trim();
+        final newRefreshToken = data['refreshToken']?.toString().trim();
 
         if (accessToken != null &&
             accessToken.isNotEmpty &&
@@ -518,7 +586,26 @@ class ApiClient {
       if (response.statusCode == 400 ||
           response.statusCode == 401 ||
           response.statusCode == 403) {
-        await _expireSession();
+        // A concurrent request/isolate can rotate and persist a newer refresh
+        // token while this request is still in flight. A rejection of the old
+        // token must not erase that newer valid session.
+        for (final delay in <Duration>[
+          Duration.zero,
+          const Duration(milliseconds: 250),
+          const Duration(milliseconds: 750),
+        ]) {
+          if (delay != Duration.zero) {
+            await Future<void>.delayed(delay);
+          }
+          final latestRefreshToken =
+              (await _storage.getRefreshToken())?.trim();
+          if (latestRefreshToken != null &&
+              latestRefreshToken.isNotEmpty &&
+              latestRefreshToken != refreshToken) {
+            return _RefreshResult.refreshed;
+          }
+        }
+
         return _RefreshResult.invalidSession;
       }
       return _RefreshResult.transientFailure;
@@ -531,9 +618,16 @@ class ApiClient {
     }
   }
 
+  bool _hasAccessTokenChanged(String? usedToken, String? latestToken) {
+    final used = usedToken?.trim() ?? '';
+    final latest = latestToken?.trim() ?? '';
+    return latest.isNotEmpty && latest != used;
+  }
+
   Future<void> _expireSession() async {
     await _storage.clearTokens();
-    clearSelectedRestaurantId();
+    _selectedRestaurantId = null;
+    await _storage.clearSelectedRestaurantId();
     _sessionExpiredController.add(null);
   }
 
