@@ -32,9 +32,10 @@ dependencies:
   # Formatting
   intl: ^0.20.2
 
-  # Push notifications
+  # Push notifications / crash reporting
   firebase_core: ^4.7.0
   firebase_messaging: ^16.2.0
+  firebase_crashlytics: ^5.2.0
   flutter_local_notifications: ^21.0.0
 
 dev_dependencies:
