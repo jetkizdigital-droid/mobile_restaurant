@@ -8,8 +8,10 @@
 
     <application
         android:name="${applicationName}"
-        android:label="Jetkiz Restaurant"
+        android:label="JETKIZ Ресторан"
         android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:usesCleartextTraffic="false"
         android:enableOnBackInvokedCallback="true">
 
