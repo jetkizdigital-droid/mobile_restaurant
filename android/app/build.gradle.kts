@@ -25,7 +25,7 @@ val hasReleaseSigningConfig = listOf(
 
 android {
     namespace = "com.example.jetkiz_restaurant"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -41,7 +41,7 @@ android {
     defaultConfig {
         applicationId = "com.example.jetkiz_restaurant"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
