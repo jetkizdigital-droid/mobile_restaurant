@@ -34,40 +34,7 @@ jobs:
         run: python3 tool/apply_google_play_release_fixes.py
 
       - name: Harden permanent release CI
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('.github/workflows/flutter-ci.yml')
-          text = path.read_text(encoding='utf-8')
-          old = """      - name: Format check
-        run: dart format --output=none --set-exit-if-changed lib test
-
-"""
-          new = """      - name: Verify Dart source encoding
-        run: |
-          python3 - <<'PY2'
-          from pathlib import Path
-          for root in ('lib', 'test'):
-              for source in Path(root).rglob('*.dart'):
-                  source.read_text(encoding='utf-8')
-          print('All Dart sources are UTF-8')
-          PY2
-
-      - name: Format check release-critical Dart
-        run: >-
-          dart format --output=none --set-exit-if-changed
-          lib/core/push/restaurant_push_notification_service.dart
-          lib/features/auth/presentation/pages/restaurant_auth_page.dart
-          lib/features/auth/presentation/pages/restaurant_sms_page.dart
-          lib/features/orders/presentation/widgets/order_card.dart
-          lib/features/support/presentation/pages/restaurant_support_page.dart
-          test/release_compliance_test.dart
-
-"""
-          if old not in text:
-              raise SystemExit('Expected permanent CI format step not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
+        run: python3 tool/patch_generated_release_ci.py
 
       - name: Format changed Dart files
         run: >-
@@ -80,14 +47,7 @@ jobs:
           test/release_compliance_test.dart
 
       - name: Verify Dart source encoding
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          for root in ('lib', 'test'):
-              for source in Path(root).rglob('*.dart'):
-                  source.read_text(encoding='utf-8')
-          print('All Dart sources are UTF-8')
-          PY
+        run: python3 tool/verify_dart_utf8.py
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
