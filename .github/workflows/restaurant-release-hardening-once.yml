@@ -1,0 +1,85 @@
+name: Restaurant Release Hardening Once
+
+on:
+  push:
+    branches:
+      - fix/restaurant-google-play-production
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: ${{ !contains(github.event.head_commit.message, '[release-fixes-applied]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/restaurant-google-play-production
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply deterministic release fixes
+        run: python3 tool/apply_google_play_release_fixes.py
+
+      - name: Format changed Dart files
+        run: dart format lib test
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Tests
+        run: flutter test
+
+      - name: Android release policy checks
+        run: |
+          grep -q 'compileSdk = 36' android/app/build.gradle.kts
+          grep -q 'targetSdk = 36' android/app/build.gradle.kts
+          ! grep -R 'fullScreenIntent: true' lib
+          ! grep -R 'AndroidNotificationCategory.alarm' lib
+          grep -q 'android:usesCleartextTraffic="false"' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Prepare ephemeral CI release signing
+        run: |
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/restaurant-ci-upload.jks" \
+            -storepass ci-not-for-production \
+            -keypass ci-not-for-production \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -alias restaurant-ci \
+            -dname "CN=JETKIZ CI,O=JETKIZ,C=KZ"
+          cat > android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/restaurant-ci-upload.jks
+          storePassword=ci-not-for-production
+          keyAlias=restaurant-ci
+          keyPassword=ci-not-for-production
+          EOF
+
+      - name: Build release AAB
+        run: flutter build appbundle --release
+
+      - name: Commit verified hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib test android .github/workflows/flutter-ci.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(release): harden restaurant app for Google Play [release-fixes-applied]"
+          git push origin HEAD:fix/restaurant-google-play-production
