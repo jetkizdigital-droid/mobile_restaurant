@@ -33,9 +33,6 @@ jobs:
       - name: Apply deterministic release fixes
         run: python3 tool/apply_google_play_release_fixes.py
 
-      - name: Harden permanent release CI
-        run: python3 tool/patch_generated_release_ci.py
-
       - name: Format changed Dart files
         run: >-
           dart format
@@ -88,11 +85,23 @@ jobs:
       - name: Build release AAB
         run: flutter build appbundle --release
 
+      - name: Verify 16 KB native library alignment
+        run: python3 tool/verify_android_16kb_alignment.py
+
       - name: Commit verified hardening
         run: |
+          rm -f android/key.properties
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib test android .github/workflows/flutter-ci.yml
+          git add \
+            lib/core/push/restaurant_push_notification_service.dart \
+            lib/features/auth/presentation/pages/restaurant_auth_page.dart \
+            lib/features/auth/presentation/pages/restaurant_sms_page.dart \
+            lib/features/orders/presentation/widgets/order_card.dart \
+            lib/features/support/presentation/pages/restaurant_support_page.dart \
+            test/release_compliance_test.dart \
+            android/app/build.gradle.kts \
+            android/app/src/main/AndroidManifest.xml
           git diff --cached --quiet && exit 0
           git commit -m "fix(release): harden restaurant app for Google Play [release-fixes-applied]"
           git push origin HEAD:fix/restaurant-google-play-production
