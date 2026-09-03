@@ -5,11 +5,7 @@ class OrderCard extends StatelessWidget {
   final RestaurantOrder order;
   final VoidCallback? onTap;
 
-  const OrderCard({
-    super.key,
-    required this.order,
-    this.onTap,
-  });
+  const OrderCard({super.key, required this.order, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -26,22 +22,17 @@ class OrderCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '«‡Í‡Á #${order.id}',
+              '–ó–∞–∫–∞–∑ #${order.id}',
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              order.status,
-              style: const TextStyle(color: Colors.grey),
-            ),
+            Text(order.status, style: const TextStyle(color: Colors.grey)),
           ],
         ),
       ),
     );
   }
 }
-
-

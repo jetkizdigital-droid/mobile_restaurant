@@ -115,10 +115,9 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
       final response = await _restaurantApi.requestAccountDeletion();
       if (!mounted) return;
 
-      final message =
-          response['message']?.toString().trim().isNotEmpty == true
-              ? response['message'].toString().trim()
-              : 'Запрос на удаление аккаунта отправлен';
+      final message = response['message']?.toString().trim().isNotEmpty == true
+          ? response['message'].toString().trim()
+          : 'Запрос на удаление аккаунта отправлен';
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -226,8 +225,15 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
               onTap: () => _open(Uri.parse('https://jetkiz.asia/privacy')),
             ),
             _SupportAction(
+              icon: Icons.info_outline_rounded,
+              title: 'Как удаляются аккаунт и данные',
+              subtitle: 'Открыть jetkiz.asia/account-deletion',
+              onTap: () =>
+                  _open(Uri.parse('https://jetkiz.asia/account-deletion')),
+            ),
+            _SupportAction(
               icon: Icons.delete_outline_rounded,
-              title: 'Удаление аккаунта',
+              title: 'Запросить удаление аккаунта',
               subtitle: _requestingDeletion
                   ? 'Отправляем запрос…'
                   : 'Отправить официальный запрос в JETKIZ',
@@ -374,10 +380,7 @@ class _MessageCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   body,
-                  style: const TextStyle(
-                    color: Color(0xFFB7C0CE),
-                    height: 1.4,
-                  ),
+                  style: const TextStyle(color: Color(0xFFB7C0CE), height: 1.4),
                 ),
               ],
             ),

@@ -1,5 +1,5 @@
 // JETKIZ RESTAURANT APP
-// SMS verification page for restaurant auth.
+// OTP verification page for restaurant auth.
 //
 // FLOW:
 // 1. request code on auth screen
@@ -78,16 +78,15 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
           nameRu: (registerData['nameRu'] ?? '').toString().trim(),
           nameKk: (registerData['nameKk'] ?? '').toString().trim(),
           address: (registerData['address'] ?? '').toString().trim(),
-          workingHoursFrom:
-              (registerData['workingHoursFrom'] ?? '').toString().trim(),
-          workingHoursTo:
-              (registerData['workingHoursTo'] ?? '').toString().trim(),
+          workingHoursFrom: (registerData['workingHoursFrom'] ?? '')
+              .toString()
+              .trim(),
+          workingHoursTo: (registerData['workingHoursTo'] ?? '')
+              .toString()
+              .trim(),
         );
       } else {
-        await _authApi.verifyCode(
-          phone: normalizedPhone,
-          code: code,
-        );
+        await _authApi.verifyCode(phone: normalizedPhone, code: code);
       }
 
       final me = await _authApi.getMe();
@@ -154,9 +153,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            _t('Код отправлен повторно', 'Код қайта жіберілді'),
-          ),
+          content: Text(_t('Код отправлен повторно', 'Код қайта жіберілді')),
         ),
       );
     } catch (error, stackTrace) {
@@ -215,11 +212,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              backgroundTop,
-              Color(0xFF0B1524),
-              backgroundBottom,
-            ],
+            colors: [backgroundTop, Color(0xFF0B1524), backgroundBottom],
           ),
         ),
         child: SafeArea(
@@ -270,8 +263,8 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                       const SizedBox(height: 8),
                       Text(
                         _t(
-                          'Введите код из SMS, отправленный на номер ${widget.phone}',
-                          '${widget.phone} нөміріне SMS арқылы жіберілген кодты енгізіңіз',
+                          'Введите код подтверждения, отправленный на номер ${widget.phone}',
+                          '${widget.phone} нөміріне жіберілген растау кодын енгізіңіз',
                         ),
                         style: const TextStyle(
                           color: textMuted,
@@ -285,7 +278,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                       _DarkTextField(
                         controller: _codeController,
                         hintText: _t('Введите код', 'Кодты енгізіңіз'),
-                        prefixIcon: Icons.sms_outlined,
+                        prefixIcon: Icons.verified_outlined,
                         keyboardType: TextInputType.number,
                         enabled: !_isLoading,
                         onSubmitted: (_) {
@@ -306,8 +299,9 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                         width: double.infinity,
                         height: 50,
                         child: OutlinedButton(
-                          onPressed:
-                              _isLoading || _isResending ? null : _resendCode,
+                          onPressed: _isLoading || _isResending
+                              ? null
+                              : _resendCode,
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Color(0xFF2A3950)),
                             shape: RoundedRectangleBorder(
@@ -403,17 +397,11 @@ class _DarkTextField extends StatelessWidget {
         keyboardType: keyboardType,
         textInputAction: TextInputAction.done,
         onSubmitted: onSubmitted,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 14),
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hintText,
-          hintStyle: const TextStyle(
-            color: Color(0xFF6F7D91),
-            fontSize: 14,
-          ),
+          hintStyle: const TextStyle(color: Color(0xFF6F7D91), fontSize: 14),
           prefixIcon: Icon(
             prefixIcon,
             color: const Color(0xFF8E9AAF),
@@ -430,10 +418,7 @@ class _GreenButton extends StatelessWidget {
   final String text;
   final VoidCallback? onPressed;
 
-  const _GreenButton({
-    required this.text,
-    required this.onPressed,
-  });
+  const _GreenButton({required this.text, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -444,7 +429,9 @@ class _GreenButton extends StatelessWidget {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF489F2A),
-          disabledBackgroundColor: const Color(0xFF489F2A).withValues(alpha: 0.6),
+          disabledBackgroundColor: const Color(
+            0xFF489F2A,
+          ).withValues(alpha: 0.6),
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -453,10 +440,7 @@ class _GreenButton extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
       ),
     );

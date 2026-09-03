@@ -53,8 +53,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     );
     await plugin.initialize(settings: initializationSettings);
 
-    final androidPlugin = plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     await androidPlugin?.createNotificationChannel(
       const AndroidNotificationChannel(
         _androidNewOrderChannelId,
@@ -113,7 +115,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
               _restaurantOrderSoundName,
             ),
             enableVibration: true,
-            category: AndroidNotificationCategory.alarm,
+            category: AndroidNotificationCategory.message,
             visibility: NotificationVisibility.public,
             ticker: 'Новый заказ',
           ),
@@ -219,7 +221,6 @@ class RestaurantPushNotificationService {
     _initialized = true;
     await markAppOpened();
 
-    await _requestPermission();
     await _initLocalNotifications();
     await _listenTokenRefresh();
     await _listenForegroundMessages();
@@ -272,6 +273,8 @@ class RestaurantPushNotificationService {
 
       return;
     }
+
+    await _requestPermission();
 
     final token = await getToken();
 
@@ -486,9 +489,8 @@ class RestaurantPushNotificationService {
             restaurantOrderSoundName,
           ),
           enableVibration: true,
-          category: AndroidNotificationCategory.alarm,
+          category: AndroidNotificationCategory.message,
           visibility: NotificationVisibility.public,
-          fullScreenIntent: true,
           ticker: 'Новый заказ',
         ),
         iOS: const DarwinNotificationDetails(
