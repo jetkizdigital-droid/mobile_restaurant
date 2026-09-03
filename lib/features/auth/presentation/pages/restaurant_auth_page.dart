@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'restaurant_sms_page.dart';
 
@@ -20,6 +21,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
   RestaurantAuthTab _tab = RestaurantAuthTab.login;
   RestaurantAuthLanguage _language = RestaurantAuthLanguage.ru;
   bool _isLoading = false;
+  bool _registrationConsentAccepted = false;
 
   final TextEditingController _loginPhoneController = TextEditingController();
   final TextEditingController _registerPhoneController =
@@ -190,7 +192,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         final message = e.toString().replaceFirst('Exception: ', '').trim();
         _showError(
           message.isEmpty
-              ? _t('Не удалось отправить SMS-код', 'SMS-код жіберілмеді')
+              ? _t('Не удалось отправить код', 'Код жіберілмеді')
               : message,
         );
         return;
@@ -243,6 +245,16 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       return;
     }
 
+    if (!_registrationConsentAccepted) {
+      _showError(
+        _t(
+          'Подтвердите согласие с политикой конфиденциальности и обработкой персональных данных',
+          'Құпиялылық саясатымен және дербес деректерді өңдеумен келісуді растаңыз',
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -255,7 +267,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         final message = e.toString().replaceFirst('Exception: ', '').trim();
         _showError(
           message.isEmpty
-              ? _t('Не удалось отправить SMS-код', 'SMS-код жіберілмеді')
+              ? _t('Не удалось отправить код', 'Код жіберілмеді')
               : message,
         );
         return;
@@ -283,6 +295,16 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _openExternalDocument(String url) async {
+    final uri = Uri.parse(url);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      _showError(
+        _t('Не удалось открыть документ', 'Құжатты ашу мүмкін болмады'),
+      );
     }
   }
 
@@ -492,10 +514,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          _t(
-            'Заполните данные ресторана',
-            'Мейрамхана деректерін толтырыңыз',
-          ),
+          _t('Заполните данные ресторана', 'Мейрамхана деректерін толтырыңыз'),
           style: const TextStyle(color: Color(0xFF95A0B3), fontSize: 13),
         ),
         const SizedBox(height: 18),
@@ -575,7 +594,95 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
             ),
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Checkbox(
+              value: _registrationConsentAccepted,
+              activeColor: const Color(0xFF489F2A),
+              side: const BorderSide(color: Color(0xFF6F7D91)),
+              onChanged: _isLoading
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _registrationConsentAccepted = value ?? false;
+                      });
+                    },
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      _t(
+                        'Регистрируясь, вы соглашаетесь с правилами обработки данных JETKIZ.',
+                        'Тіркелу арқылы JETKIZ деректерді өңдеу ережелерімен келісесіз.',
+                      ),
+                      style: const TextStyle(
+                        color: Color(0xFF95A0B3),
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 0,
+                    children: [
+                      TextButton(
+                        onPressed: () => _openExternalDocument(
+                          'https://jetkiz.asia/privacy',
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: const Color(0xFF65C044),
+                        ),
+                        child: Text(
+                          _t(
+                            'Политика конфиденциальности',
+                            'Құпиялылық саясаты',
+                          ),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _openExternalDocument(
+                          'https://jetkiz.asia/consent',
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: const Color(0xFF65C044),
+                        ),
+                        child: Text(
+                          _t(
+                            'Согласие на обработку данных',
+                            'Деректерді өңдеуге келісім',
+                          ),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
         _GreenButton(
           text: _isLoading
               ? _t('Отправка...', 'Жіберілуде...')
@@ -588,10 +695,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
 }
 
 class _LanguageSwitcher extends StatelessWidget {
-  const _LanguageSwitcher({
-    required this.language,
-    required this.onChanged,
-  });
+  const _LanguageSwitcher({required this.language, required this.onChanged});
 
   final RestaurantAuthLanguage language;
   final ValueChanged<RestaurantAuthLanguage> onChanged;

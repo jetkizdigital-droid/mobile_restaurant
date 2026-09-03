@@ -5,11 +5,7 @@ class OrderCard extends StatelessWidget {
   final RestaurantOrder order;
   final VoidCallback? onTap;
 
-  const OrderCard({
-    super.key,
-    required this.order,
-    this.onTap,
-  });
+  const OrderCard({super.key, required this.order, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -33,10 +29,7 @@ class OrderCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              order.status,
-              style: const TextStyle(color: Colors.grey),
-            ),
+            Text(order.status, style: const TextStyle(color: Colors.grey)),
           ],
         ),
       ),
