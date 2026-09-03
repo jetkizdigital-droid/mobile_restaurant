@@ -6,9 +6,13 @@ on:
     branches:
       - main
       - fix/restaurant-production-audit
+      - fix/restaurant-google-play-production
   pull_request:
     paths:
       - 'lib/**'
+      - 'test/**'
+      - 'tool/verify_dart_utf8.py'
+      - 'tool/verify_android_16kb_alignment.py'
       - 'android/**'
       - 'ios/**'
       - 'pubspec.yaml'
@@ -19,7 +23,7 @@ on:
 jobs:
   flutter:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -37,11 +41,57 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Verify Dart source encoding
+        run: python3 tool/verify_dart_utf8.py
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
       - name: Tests
         run: flutter test
 
+      - name: Android release policy checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'compileSdk = 36' android/app/build.gradle.kts
+          grep -q 'targetSdk = 36' android/app/build.gradle.kts
+          ! grep -R 'fullScreenIntent: true' lib
+          ! grep -R 'AndroidNotificationCategory.alarm' lib
+          grep -q 'android:usesCleartextTraffic="false"' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:fullBackupContent="false"' android/app/src/main/AndroidManifest.xml
+
       - name: Build debug APK
         run: flutter build apk --debug
+
+      - name: Prepare ephemeral CI release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/restaurant-ci-upload.jks" \
+            -storepass ci-not-for-production \
+            -keypass ci-not-for-production \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -alias restaurant-ci \
+            -dname "CN=JETKIZ CI,O=JETKIZ,C=KZ"
+          cat > android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/restaurant-ci-upload.jks
+          storePassword=ci-not-for-production
+          keyAlias=restaurant-ci
+          keyPassword=ci-not-for-production
+          EOF
+
+      - name: Build release AAB
+        run: flutter build appbundle --release
+
+      - name: Verify 16 KB native library alignment
+        run: python3 tool/verify_android_16kb_alignment.py
+
+      - name: Remove ephemeral signing config
+        if: always()
+        shell: bash
+        run: rm -f android/key.properties "$RUNNER_TEMP/restaurant-ci-upload.jks"
