@@ -1,0 +1,75 @@
+name: Finalize restaurant iOS push sound
+
+on:
+  push:
+    branches:
+      - fix/restaurant-ios-push-sound
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/restaurant-ios-push-sound
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Use default iOS sound for restaurant orders
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/core/push/restaurant_push_notification_service.dart')
+          text = path.read_text(encoding='utf-8')
+          needle = "          sound: 'restaurant_order.wav',\n"
+          count = text.count(needle)
+          if count != 1:
+              raise SystemExit(f'Expected 1 restaurant iOS custom sound reference, found {count}')
+          path.write_text(text.replace(needle, ''), encoding='utf-8')
+          PY
+          dart format lib/core/push/restaurant_push_notification_service.dart
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Tests
+        run: flutter test
+
+      - name: Verify Android custom sound remains
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s android/app/src/main/res/raw/restaurant_order.mp3
+          grep -F "RawResourceAndroidNotificationSound(restaurantOrderSoundName)" lib/core/push/restaurant_push_notification_service.dart
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/finalize-restaurant-ios-push.yml
+          mapfile -t changed < <(git status --short | sed -E 's/^.. //')
+          allowed='^(\.github/workflows/finalize-restaurant-ios-push\.yml|lib/core/push/restaurant_push_notification_service\.dart)$'
+          for path in "${changed[@]}"; do
+            [[ "$path" =~ $allowed ]] || { echo "Unexpected finalizer change: $path"; exit 1; }
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(push): use default iOS sound for restaurant orders'
+          git push origin HEAD:fix/restaurant-ios-push-sound
