@@ -153,6 +153,42 @@ if 'AppBuildInfo.fullVersion' not in support:
     raise SystemExit('Support screen must use AppBuildInfo.fullVersion')
 if 'JETKIZ Restaurant · 1.0.0' in support:
     raise SystemExit('Support screen version must not be hardcoded')
+for required in (
+    'Документы и аккаунт',
+    'Запросить удаление аккаунта',
+    'https://jetkiz.asia/account-deletion',
+    '_requestAccountDeletion',
+):
+    if required not in support:
+        raise SystemExit(f'Account-deletion compliance path missing from Support: {required}')
+
+restaurant_api = (root / 'lib/features/restaurant/data/restaurant_api.dart').read_text(
+    encoding='utf-8'
+)
+if '/restaurants/me/deletion-request' not in restaurant_api:
+    raise SystemExit('Restaurant account-deletion request API contract is missing')
+
+identity_path = root / 'lib/core/device/restaurant_device_identity.dart'
+if not identity_path.exists():
+    raise SystemExit('Stable Restaurant device identity helper is missing')
+identity = identity_path.read_text(encoding='utf-8')
+if 'restaurant_device_id' not in identity:
+    raise SystemExit('Restaurant device identity storage key is missing')
+if 'Random.secure()' not in identity:
+    raise SystemExit('Restaurant device identity must use a secure random source')
+
+api_client = (root / 'lib/core/network/api_client.dart').read_text(encoding='utf-8')
+for required in (
+    'RestaurantDeviceIdentity.getOrCreate()',
+    "headers['x-device-id']",
+    "headers['x-app'] = 'restaurant'",
+    "headers['x-app-version'] = AppBuildInfo.fullVersion",
+    "headers['x-platform']",
+):
+    if required not in api_client:
+        raise SystemExit(f'Restaurant auth device-context contract missing: {required}')
+if "headers: await _buildHeaders(" not in api_client:
+    raise SystemExit('Refresh requests must carry the Restaurant device context')
 
 entry = (root / 'lib/features/auth/presentation/pages/restaurant_entry_page.dart').read_text(
     encoding='utf-8'
