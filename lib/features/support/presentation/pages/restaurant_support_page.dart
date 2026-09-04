@@ -16,6 +16,17 @@ class RestaurantSupportPage extends StatefulWidget {
 }
 
 class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
+  static const Set<String> _telegramHosts = <String>{
+    't.me',
+    'telegram.me',
+  };
+  static const Set<String> _whatsappHosts = <String>{
+    'wa.me',
+    'api.whatsapp.com',
+    'whatsapp.com',
+    'www.whatsapp.com',
+  };
+
   final RestaurantNotificationsApi _notificationsApi =
       RestaurantNotificationsApi();
   late final RestaurantApi _restaurantApi = RestaurantApi(ApiClient.instance);
@@ -69,18 +80,65 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     }
   }
 
-  Future<void> _openRawUrl(String? value) async {
-    final url = value?.trim() ?? '';
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme) {
+  Uri? _validatedHttpsUrl(String? value, Set<String> allowedHosts) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return null;
+
+    final uri = Uri.tryParse(raw);
+    if (uri == null ||
+        uri.scheme.toLowerCase() != 'https' ||
+        uri.userInfo.isNotEmpty ||
+        uri.host.trim().isEmpty) {
+      return null;
+    }
+
+    final host = uri.host.toLowerCase();
+    if (!allowedHosts.contains(host)) return null;
+
+    return uri;
+  }
+
+  String? _normalizedPhone(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return null;
+
+    final hasPlus = raw.startsWith('+');
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 10 || digits.length > 15) return null;
+
+    return '${hasPlus ? '+' : ''}$digits';
+  }
+
+  Future<void> _openValidatedSupportUrl({
+    required String? value,
+    required Set<String> allowedHosts,
+    required String unavailableMessage,
+  }) async {
+    final uri = _validatedHttpsUrl(value, allowedHosts);
+    if (uri == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Telegram поддержки пока недоступен')),
+          SnackBar(content: Text(unavailableMessage)),
         );
       }
       return;
     }
+
     await _open(uri);
+  }
+
+  Future<void> _callSupport(String? value) async {
+    final phone = _normalizedPhone(value);
+    if (phone == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Телефон поддержки пока недоступен')),
+        );
+      }
+      return;
+    }
+
+    await _open(Uri(scheme: 'tel', path: phone));
   }
 
   Future<void> _requestAccountDeletion() async {
@@ -153,6 +211,15 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   @override
   Widget build(BuildContext context) {
     final support = _bootstrap?.support;
+    final phone = _normalizedPhone(support?.phone);
+    final whatsapp = _validatedHttpsUrl(
+      support?.whatsappUrl,
+      _whatsappHosts,
+    );
+    final telegram = _validatedHttpsUrl(
+      support?.telegramUrl,
+      _telegramHosts,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFF09111C),
@@ -189,11 +256,37 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
                 body: support!.emergencyTextRu!.trim(),
               ),
             _SupportAction(
+              icon: Icons.phone_rounded,
+              title: 'Позвонить в JETKIZ',
+              subtitle: phone ?? 'Телефон поддержки временно недоступен',
+              enabled: phone != null,
+              onTap: () => _callSupport(support?.phone),
+            ),
+            _SupportAction(
+              icon: Icons.chat_rounded,
+              title: 'WhatsApp JETKIZ',
+              subtitle: whatsapp != null
+                  ? 'Открыть чат поддержки в WhatsApp'
+                  : 'WhatsApp поддержки временно недоступен',
+              enabled: whatsapp != null,
+              onTap: () => _openValidatedSupportUrl(
+                value: support?.whatsappUrl,
+                allowedHosts: _whatsappHosts,
+                unavailableMessage: 'WhatsApp поддержки пока недоступен',
+              ),
+            ),
+            _SupportAction(
               icon: Icons.send_rounded,
-              title: 'Поддержка JETKIZ',
-              subtitle: 'Открыть группу поддержки в Telegram',
-              enabled: (support?.telegramUrl ?? '').trim().isNotEmpty,
-              onTap: () => _openRawUrl(support?.telegramUrl),
+              title: 'Telegram JETKIZ',
+              subtitle: telegram != null
+                  ? 'Открыть поддержку в Telegram'
+                  : 'Telegram поддержки временно недоступен',
+              enabled: telegram != null,
+              onTap: () => _openValidatedSupportUrl(
+                value: support?.telegramUrl,
+                allowedHosts: _telegramHosts,
+                unavailableMessage: 'Telegram поддержки пока недоступен',
+              ),
             ),
             _SupportAction(
               icon: Icons.notifications_rounded,
