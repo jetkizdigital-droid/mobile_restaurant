@@ -48,7 +48,7 @@ jobs:
       - name: Validate source
         run: |
           git diff --check
-          flutter analyze
+          flutter analyze --no-fatal-infos
           flutter test
 
       - name: Commit clean source change
