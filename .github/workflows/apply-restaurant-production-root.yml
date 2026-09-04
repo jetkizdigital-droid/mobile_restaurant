@@ -1,0 +1,50 @@
+name: Apply restaurant production root hardening
+
+on:
+  push:
+    branches:
+      - fix/restaurant-production-root
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/restaurant-production-root
+          fetch-depth: 0
+      - name: Apply patch
+        run: python3 tool/apply_restaurant_production_root_patch.py
+      - name: Enable permanent CI on hardening branch
+        run: sed -i '/fix\/restaurant-google-play-production/a\      - fix/restaurant-production-root' .github/workflows/flutter-ci.yml
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Format
+        run: dart format lib test
+      - name: Verify release contract
+        run: python3 tool/verify_restaurant_release_contract.py
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Tests
+        run: flutter test
+      - name: Build debug APK
+        run: flutter build apk --debug
+      - name: Commit verified product changes
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add lib tool/verify_restaurant_release_contract.py .github/workflows/flutter-ci.yml
+          git commit -m "fix(restaurant): harden push routing and startup"
+          git push origin HEAD:fix/restaurant-production-root
