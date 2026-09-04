@@ -182,7 +182,16 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     if (_isUpdatingAcceptingOrders) return;
 
     final cms = _cmsBootstrap;
-    if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
+    if (cms != null &&
+        !cms.featureEnabled('RESTAURANT_STATUS_EDIT_ENABLED')) {
+      final reason = cms.featureReason('RESTAURANT_STATUS_EDIT_ENABLED');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(reason ?? 'Изменение статуса временно недоступно')),
+      );
+      return;
+    }
+
+    if (value && cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
       final reason = cms.featureReason('ACCEPT_ORDERS_ENABLED');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(reason ?? 'Приём заказов временно недоступен')),
@@ -310,6 +319,12 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
           hideBottomBar: true,
         );
       case RestaurantBottomBarTab.menu:
+        if (_cmsBootstrap?.featureEnabled('MENU_EDIT_ENABLED') == false) {
+          return _FeatureUnavailable(
+            title: 'Меню временно недоступно',
+            reason: _cmsBootstrap?.featureReason('MENU_EDIT_ENABLED'),
+          );
+        }
         return const RestaurantMenuPage();
       case RestaurantBottomBarTab.profile:
         return const profile_page.RestaurantProfilePage(hideBottomBar: true);
@@ -341,6 +356,17 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       return _MaintenanceGate(
         title: maintenance?.titleRu,
         body: maintenance?.bodyRu,
+        onRetry: _loadRestaurant,
+        onSupport: _openSupportDuringMaintenance,
+        onLogout: _logout,
+        isLoggingOut: _isLoggingOut,
+      );
+    }
+
+    if (_cmsBootstrap?.featureEnabled('RESTAURANT_APP_ENABLED') == false) {
+      return _MaintenanceGate(
+        title: 'JETKIZ Ресторан временно недоступен',
+        body: _cmsBootstrap?.featureReason('RESTAURANT_APP_ENABLED'),
         onRetry: _loadRestaurant,
         onSupport: _openSupportDuringMaintenance,
         onLogout: _logout,
