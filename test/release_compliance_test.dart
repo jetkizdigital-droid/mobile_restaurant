@@ -29,4 +29,28 @@ void main() {
     expect(find.textContaining('Введите код подтверждения'), findsOneWidget);
     expect(find.textContaining('SMS'), findsNothing);
   });
+
+  testWidgets('existing restaurant account exposes reusable password login', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: RestaurantSmsPage(phone: '+7 700 000 00 00', isNewUser: false),
+      ),
+    );
+
+    expect(find.text('Войти по паролю'), findsOneWidget);
+  });
+
+  testWidgets('new restaurant registration does not expose password login', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: RestaurantSmsPage(phone: '+7 700 000 00 00', isNewUser: true),
+      ),
+    );
+
+    expect(find.text('Войти по паролю'), findsNothing);
+  });
 }
