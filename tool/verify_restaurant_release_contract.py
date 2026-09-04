@@ -39,6 +39,49 @@ if 'android.permission.POST_NOTIFICATIONS' not in manifest:
     raise SystemExit('POST_NOTIFICATIONS permission is required')
 if 'restaurant_new_orders_v2' not in manifest:
     raise SystemExit('Restaurant new-order default channel is missing')
+if 'android:icon="@mipmap/ic_launcher"' not in manifest:
+    raise SystemExit('Restaurant launcher icon is not wired in AndroidManifest.xml')
+if 'android:roundIcon="@mipmap/ic_launcher_round"' not in manifest:
+    raise SystemExit('Restaurant round launcher icon is not wired in AndroidManifest.xml')
+
+launcher_background = (root / 'android/app/src/main/res/values/colors.xml').read_text(encoding='utf-8')
+if '#1A1F35' not in launcher_background.upper():
+    raise SystemExit('Restaurant launcher background must be #1A1F35')
+
+launcher_foreground = (root / 'android/app/src/main/res/drawable/ic_launcher_foreground.xml').read_text(
+    encoding='utf-8'
+)
+for required in (
+    'android:width="108dp"',
+    'android:height="108dp"',
+    'android:scaleX="0.80"',
+    'android:scaleY="0.80"',
+    'android:fillColor="#FFFFFFFF"',
+):
+    if required not in launcher_foreground:
+        raise SystemExit(f'Restaurant launcher foreground contract missing: {required}')
+
+for relative_path in (
+    'android/app/src/main/res/mipmap-anydpi/ic_launcher.xml',
+    'android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml',
+    'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
+    'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
+):
+    path = root / relative_path
+    if not path.exists():
+        raise SystemExit(f'Restaurant launcher resource missing: {relative_path}')
+
+for relative_path in (
+    'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
+    'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
+):
+    adaptive = (root / relative_path).read_text(encoding='utf-8')
+    if '<adaptive-icon' not in adaptive:
+        raise SystemExit(f'Adaptive launcher contract missing in {relative_path}')
+    if '@color/launcher_icon_background' not in adaptive:
+        raise SystemExit(f'Adaptive launcher background missing in {relative_path}')
+    if '@drawable/ic_launcher_foreground' not in adaptive:
+        raise SystemExit(f'Adaptive launcher foreground missing in {relative_path}')
 
 push = (root / 'lib/core/push/restaurant_push_notification_service.dart').read_text(encoding='utf-8')
 for required in (
@@ -58,5 +101,13 @@ if "'appVersion': '1.0.0'" in cms or 'appVersion=1.0.0' in cms:
     raise SystemExit('CMS appVersion must not be hardcoded')
 if 'AppBuildInfo.versionName' not in cms:
     raise SystemExit('CMS must use AppBuildInfo.versionName')
+
+support = (root / 'lib/features/support/presentation/pages/restaurant_support_page.dart').read_text(
+    encoding='utf-8'
+)
+if 'AppBuildInfo.fullVersion' not in support:
+    raise SystemExit('Support screen must use AppBuildInfo.fullVersion')
+if 'JETKIZ Restaurant · 1.0.0' in support:
+    raise SystemExit('Support screen version must not be hardcoded')
 
 print(f'Restaurant release contract PASS: {application_id} {version_name}+{build_number}')
