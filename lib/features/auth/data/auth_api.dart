@@ -7,6 +7,7 @@ import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 // IMPORTANT:
 // - SMS code is requested through the shared endpoint: POST /auth/request-code
 // - Regular login is completed through: POST /auth/verify-code
+// - Reusable review/password login uses: POST /auth/restaurant/login-password
 // - Restaurant registration is completed through: POST /restaurant-auth/register
 //
 // MULTI-BRANCH:
@@ -44,6 +45,29 @@ class AuthApi {
 
     if (response is! Map<String, dynamic>) {
       throw Exception('Некорректный формат ответа verify-code');
+    }
+
+    await _saveTokensFromResponse(response);
+    await _syncSelectedRestaurantFromAuthPayload(response);
+
+    return response;
+  }
+
+  Future<Map<String, dynamic>> loginRestaurantWithPassword({
+    required String phone,
+    required String password,
+  }) async {
+    final response = await _client.post(
+      '/auth/restaurant/login-password',
+      {
+        'phone': phone,
+        'password': password,
+      },
+      authRequired: false,
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw Exception('Некорректный формат ответа restaurant/login-password');
     }
 
     await _saveTokensFromResponse(response);
