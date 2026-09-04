@@ -4,7 +4,7 @@
 // FLOW:
 // 1. request code on auth screen
 // 2. open this page
-// 3. verify code
+// 3. verify code, or use password login for an account with a permanent password
 // 4. if isNewUser == true -> backend finishes registration
 // 5. if isNewUser == false -> normal login
 // 6. after successful login/register -> register FCM token for restaurant app
@@ -15,6 +15,7 @@ import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service
 import 'package:jetkiz_restaurant/core/session/restaurant_context.dart';
 import 'package:jetkiz_restaurant/core/session/session_manager.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
+import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_password_login_page.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/pages/restaurant_shell_page.dart';
 
 class RestaurantSmsPage extends StatefulWidget {
@@ -170,6 +171,19 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
     }
   }
 
+  void _openPasswordLogin() {
+    if (_isLoading || _isResending) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RestaurantPasswordLoginPage(
+          phone: widget.phone,
+          languageCode: widget.languageCode,
+        ),
+      ),
+    );
+  }
+
   String _cleanError(Object error) {
     final message = error.toString().replaceFirst('Exception: ', '').trim();
 
@@ -323,6 +337,27 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                           ),
                         ),
                       ),
+                      if (!widget.isNewUser) ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: TextButton.icon(
+                            onPressed: _isLoading || _isResending
+                                ? null
+                                : _openPasswordLogin,
+                            icon: const Icon(Icons.lock_outline_rounded),
+                            label: Text(
+                              _t('Войти по паролю', 'Құпиясөзбен кіру'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF8FD56F),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       Text(
                         _t(
