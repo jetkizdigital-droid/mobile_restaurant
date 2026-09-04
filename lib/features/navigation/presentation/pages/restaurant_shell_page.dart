@@ -82,6 +82,12 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     unawaited(RestaurantPushNotificationService.instance.markAppOpened());
+    unawaited(RestaurantPushNotificationService.instance.markNavigationReady());
+    unawaited(
+      RestaurantPushNotificationService.instance.registerCurrentToken(
+        requestPermissionIfNeeded: false,
+      ),
+    );
     unawaited(_loadRestaurant());
     _refreshActiveOrders();
   }
@@ -114,7 +120,8 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
     try {
       try {
-        await RestaurantPushNotificationService.instance.unregisterCurrentToken();
+        await RestaurantPushNotificationService.instance
+            .unregisterCurrentToken();
       } catch (_) {
         // Logout must remain available even when push/backend is degraded.
       }
@@ -140,9 +147,9 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   }
 
   void _openSupportDuringMaintenance() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RestaurantSupportPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RestaurantSupportPage()));
   }
 
   Future<void> _loadRestaurant() async {
@@ -178,9 +185,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
       final reason = cms.featureReason('ACCEPT_ORDERS_ENABLED');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(reason ?? 'Приём заказов временно недоступен'),
-        ),
+        SnackBar(content: Text(reason ?? 'Приём заказов временно недоступен')),
       );
       return;
     }
@@ -212,9 +217,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         ..showSnackBar(
           SnackBar(
             content: Text(
-              value
-                  ? 'Приём заказов включён'
-                  : 'Приём заказов приостановлен',
+              value ? 'Приём заказов включён' : 'Приём заказов приостановлен',
             ),
           ),
         );
