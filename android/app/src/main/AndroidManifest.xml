@@ -21,11 +21,11 @@
             android:value="restaurant_new_orders_v2" />
 
         <activity
-            android:name="com.example.jetkiz_restaurant.MainActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:configChanges="orientation|keyboardHidden|keyboard|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
