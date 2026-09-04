@@ -12,7 +12,7 @@ class JetkizRestaurantApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: RestaurantPushNotificationService.navigatorKey,
       debugShowCheckedModeBanner: false,
-      title: 'Jetkiz Restaurant',
+      title: 'JETKIZ Ресторан',
       supportedLocales: const [
         Locale('ru'),
         Locale('kk'),
