@@ -1,0 +1,64 @@
+name: One-shot Restaurant iOS Sound Repair
+
+on:
+  push:
+    branches:
+      - fix/restaurant-ios-default-sound
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/restaurant-ios-default-sound
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Use default iOS notification sound
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/core/push/restaurant_push_notification_service.dart')
+          text = path.read_text(encoding='utf-8')
+          needle = "          sound: 'restaurant_order.wav',\n"
+          count = text.count(needle)
+          if count != 1:
+              raise SystemExit(f'expected 1 restaurant iOS custom sound reference, found {count}')
+          text = text.replace(needle, '')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Normalize formatting
+        run: dart format lib/core/push/restaurant_push_notification_service.dart
+
+      - name: Validate source
+        run: |
+          git diff --check
+          flutter analyze
+          flutter test
+
+      - name: Commit clean source change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/core/push/restaurant_push_notification_service.dart
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "fix(push): use default iOS restaurant sound"
+          git push origin HEAD:fix/restaurant-ios-default-sound
