@@ -13,6 +13,7 @@ on:
       - 'test/**'
       - 'tool/verify_dart_utf8.py'
       - 'tool/verify_android_16kb_alignment.py'
+      - 'tool/verify_restaurant_release_contract.py'
       - 'android/**'
       - 'ios/**'
       - 'pubspec.yaml'
@@ -43,6 +44,9 @@ jobs:
 
       - name: Verify Dart source encoding
         run: python3 tool/verify_dart_utf8.py
+
+      - name: Verify restaurant release contract
+        run: python3 tool/verify_restaurant_release_contract.py
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
