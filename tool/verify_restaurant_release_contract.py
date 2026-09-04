@@ -55,6 +55,8 @@ if 'android.permission.POST_NOTIFICATIONS' not in manifest:
     raise SystemExit('POST_NOTIFICATIONS permission is required')
 if 'restaurant_new_orders_v2' not in manifest:
     raise SystemExit('Restaurant new-order default channel is missing')
+if 'android:label="JETKIZ Ресторан"' not in manifest:
+    raise SystemExit('Installed Android label must match the Play listing name JETKIZ Ресторан')
 if 'android:icon="@mipmap/ic_launcher"' not in manifest:
     raise SystemExit('Restaurant launcher icon is not wired in AndroidManifest.xml')
 if 'android:roundIcon="@mipmap/ic_launcher_round"' not in manifest:
@@ -125,6 +127,8 @@ for required in (
         raise SystemExit(f'Push release contract missing: {required}')
 if "'appVersion': '1.0.0'" in push:
     raise SystemExit('Push appVersion must not be hardcoded')
+if not (root / 'android/app/src/main/res/raw/restaurant_order.mp3').exists():
+    raise SystemExit('Restaurant order sound resource is missing')
 
 cms = (root / 'lib/features/cms/data/restaurant_app_cms_api.dart').read_text(encoding='utf-8')
 if "'appVersion': '1.0.0'" in cms or 'appVersion=1.0.0' in cms:
@@ -139,5 +143,23 @@ if 'AppBuildInfo.fullVersion' not in support:
     raise SystemExit('Support screen must use AppBuildInfo.fullVersion')
 if 'JETKIZ Restaurant · 1.0.0' in support:
     raise SystemExit('Support screen version must not be hardcoded')
+
+entry = (root / 'lib/features/auth/presentation/pages/restaurant_entry_page.dart').read_text(
+    encoding='utf-8'
+)
+if 'RestaurantAuthGatewayPage' not in entry:
+    raise SystemExit('Unauthenticated entry must route through RestaurantAuthGatewayPage')
+
+gateway = (root / 'lib/features/auth/presentation/pages/restaurant_auth_gateway_page.dart').read_text(
+    encoding='utf-8'
+)
+if 'restaurant_password_login_direct' not in gateway:
+    raise SystemExit('Direct reusable password-login entry is missing')
+if 'requestCode(' in gateway:
+    raise SystemExit('Direct reviewer password-login entry must not depend on OTP request')
+
+app = (root / 'lib/app/app.dart').read_text(encoding='utf-8')
+if "title: 'JETKIZ Ресторан'" not in app:
+    raise SystemExit('Flutter application title must match JETKIZ Ресторан')
 
 print(f'Restaurant release contract PASS: {application_id} {version_name}+{build_number}')
