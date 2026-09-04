@@ -60,11 +60,16 @@ jobs:
           set -euo pipefail
           grep -q 'compileSdk = 36' android/app/build.gradle.kts
           grep -q 'targetSdk = 36' android/app/build.gradle.kts
+          grep -q 'namespace = "asia.jetkiz.restaurant"' android/app/build.gradle.kts
+          grep -q 'applicationId = "asia.jetkiz.restaurant"' android/app/build.gradle.kts
+          ! grep -R 'com\.example\.jetkiz_restaurant' android/app/src/main android/app/build.gradle.kts
           ! grep -R 'fullScreenIntent: true' lib
           ! grep -R 'AndroidNotificationCategory.alarm' lib
           grep -q 'android:usesCleartextTraffic="false"' android/app/src/main/AndroidManifest.xml
           grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml
           grep -q 'android:fullBackupContent="false"' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:label="JETKIZ Ресторан"' android/app/src/main/AndroidManifest.xml
+          test -s android/app/src/main/res/raw/restaurant_order.mp3
 
       - name: Build debug APK
         run: flutter build apk --debug
@@ -91,6 +96,15 @@ jobs:
 
       - name: Build release AAB
         run: flutter build appbundle --release
+
+      - name: Verify packaged Restaurant resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle='build/app/outputs/bundle/release/app-release.aab'
+          test -s "$bundle"
+          unzip -l "$bundle" | grep -q 'base/res/raw/restaurant_order.mp3'
+          unzip -l "$bundle" | grep -q 'base/manifest/AndroidManifest.xml'
 
       - name: Verify 16 KB native library alignment
         run: python3 tool/verify_android_16kb_alignment.py
