@@ -146,6 +146,28 @@ if "'appVersion': '1.0.0'" in cms or 'appVersion=1.0.0' in cms:
 if 'AppBuildInfo.versionName' not in cms:
     raise SystemExit('CMS must use AppBuildInfo.versionName')
 
+shell = (root / 'lib/features/navigation/presentation/pages/restaurant_shell_page.dart').read_text(
+    encoding='utf-8'
+)
+for required in (
+    "featureEnabled('RESTAURANT_APP_ENABLED')",
+    "featureEnabled('RESTAURANT_STATUS_EDIT_ENABLED')",
+    "featureEnabled('ACCEPT_ORDERS_ENABLED')",
+    "featureEnabled('MENU_EDIT_ENABLED')",
+    "featureEnabled('FINANCE_VIEW_ENABLED')",
+    "featureEnabled('SUPPORT_ENABLED')",
+):
+    if required not in shell:
+        raise SystemExit(f'Restaurant CMS shell gate missing: {required}')
+
+reviews_api = (root / 'lib/features/reviews/data/restaurant_reviews_api.dart').read_text(
+    encoding='utf-8'
+)
+if "path: '/restaurants/me/reviews'" not in reviews_api:
+    raise SystemExit('Restaurant app must use the guarded private review feed')
+if "path: '/restaurants/$restaurantId/reviews'" in reviews_api:
+    raise SystemExit('Restaurant app must not use the public catalog review feed')
+
 support = (root / 'lib/features/support/presentation/pages/restaurant_support_page.dart').read_text(
     encoding='utf-8'
 )
@@ -158,9 +180,15 @@ for required in (
     'Запросить удаление аккаунта',
     'https://jetkiz.asia/account-deletion',
     '_requestAccountDeletion',
+    '_telegramHosts',
+    '_whatsappHosts',
+    "uri.scheme.toLowerCase() != 'https'",
+    "title: 'Позвонить в JETKIZ'",
+    "title: 'WhatsApp JETKIZ'",
+    "title: 'Telegram JETKIZ'",
 ):
     if required not in support:
-        raise SystemExit(f'Account-deletion compliance path missing from Support: {required}')
+        raise SystemExit(f'Support/release compliance contract missing: {required}')
 
 restaurant_api = (root / 'lib/features/restaurant/data/restaurant_api.dart').read_text(
     encoding='utf-8'
