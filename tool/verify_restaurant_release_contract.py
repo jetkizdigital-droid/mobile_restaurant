@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+expected_application_id = 'asia.jetkiz.restaurant'
+
 pubspec = (root / 'pubspec.yaml').read_text(encoding='utf-8')
 match = re.search(r'^version:\s*([^+\s]+)\+(\d+)\s*$', pubspec, re.M)
 if not match:
@@ -18,9 +20,23 @@ if f"buildNumber = '{build_number}'" not in build_info:
 
 gradle = (root / 'android/app/build.gradle.kts').read_text(encoding='utf-8')
 app_id_match = re.search(r'applicationId\s*=\s*"([^"]+)"', gradle)
+namespace_match = re.search(r'namespace\s*=\s*"([^"]+)"', gradle)
 if not app_id_match:
     raise SystemExit('Android applicationId not found')
+if not namespace_match:
+    raise SystemExit('Android namespace not found')
 application_id = app_id_match.group(1)
+namespace = namespace_match.group(1)
+if application_id != expected_application_id:
+    raise SystemExit(
+        f'Production applicationId must be {expected_application_id}, got {application_id}'
+    )
+if namespace != expected_application_id:
+    raise SystemExit(
+        f'Production namespace must be {expected_application_id}, got {namespace}'
+    )
+if 'com.example' in gradle:
+    raise SystemExit('Legacy com.example Android identity is forbidden in release Gradle config')
 
 google = json.loads((root / 'android/app/google-services.json').read_text(encoding='utf-8'))
 if google.get('project_info', {}).get('project_id') != 'jetkiz-mobile':
@@ -43,6 +59,20 @@ if 'android:icon="@mipmap/ic_launcher"' not in manifest:
     raise SystemExit('Restaurant launcher icon is not wired in AndroidManifest.xml')
 if 'android:roundIcon="@mipmap/ic_launcher_round"' not in manifest:
     raise SystemExit('Restaurant round launcher icon is not wired in AndroidManifest.xml')
+if 'android:name=".MainActivity"' not in manifest:
+    raise SystemExit('Restaurant manifest must use package-relative .MainActivity')
+if 'com.example' in manifest:
+    raise SystemExit('Legacy com.example Android identity is forbidden in AndroidManifest.xml')
+
+main_activity = root / 'android/app/src/main/kotlin/asia/jetkiz/restaurant/MainActivity.kt'
+if not main_activity.exists():
+    raise SystemExit('Production MainActivity path is missing')
+main_activity_source = main_activity.read_text(encoding='utf-8-sig')
+if 'package asia.jetkiz.restaurant' not in main_activity_source:
+    raise SystemExit('MainActivity package must be asia.jetkiz.restaurant')
+legacy_main_activity = root / 'android/app/src/main/kotlin/com/example/jetkiz_restaurant/MainActivity.kt'
+if legacy_main_activity.exists():
+    raise SystemExit('Legacy com.example MainActivity must be removed')
 
 launcher_background = (root / 'android/app/src/main/res/values/colors.xml').read_text(encoding='utf-8')
 if '#1A1F35' not in launcher_background.upper():
