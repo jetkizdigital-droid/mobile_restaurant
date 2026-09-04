@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_gateway_page.dart';
 import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
 import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_sms_page.dart';
 
@@ -52,5 +53,18 @@ void main() {
     );
 
     expect(find.text('Войти по паролю'), findsNothing);
+  });
+
+  testWidgets('password login is reachable without requesting OTP', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: RestaurantAuthGatewayPage()),
+    );
+
+    expect(
+      find.byKey(const ValueKey('restaurant_password_login_direct')),
+      findsOneWidget,
+    );
   });
 }
