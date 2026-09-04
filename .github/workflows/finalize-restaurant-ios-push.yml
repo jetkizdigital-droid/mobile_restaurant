@@ -62,6 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git checkout -- pubspec.lock analysis_options.yaml
           rm -f .github/workflows/finalize-restaurant-ios-push.yml
           mapfile -t changed < <(git status --short | sed -E 's/^.. //')
           allowed='^(\.github/workflows/finalize-restaurant-ios-push\.yml|lib/core/push/restaurant_push_notification_service\.dart)$'
