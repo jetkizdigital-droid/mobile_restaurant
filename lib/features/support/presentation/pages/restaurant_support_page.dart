@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/config/app_build_info.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.dart';
@@ -241,10 +242,13 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
               onTap: _requestAccountDeletion,
             ),
             const SizedBox(height: 18),
-            const Center(
+            Center(
               child: Text(
-                'JETKIZ Restaurant · 1.0.0',
-                style: TextStyle(color: Color(0xFF6F7D91), fontSize: 12),
+                'JETKIZ Restaurant · ${AppBuildInfo.fullVersion}',
+                style: const TextStyle(
+                  color: Color(0xFF6F7D91),
+                  fontSize: 12,
+                ),
               ),
             ),
           ],
