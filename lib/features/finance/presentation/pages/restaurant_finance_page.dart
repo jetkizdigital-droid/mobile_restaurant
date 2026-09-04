@@ -5,13 +5,7 @@ import '../../../../core/network/api_client.dart';
 import '../../data/api/restaurant_finance_api.dart';
 import '../../data/models/restaurant_finance_models.dart';
 
-enum FinancePeriod {
-  today,
-  yesterday,
-  week,
-  month,
-  custom,
-}
+enum FinancePeriod { today, yesterday, week, month, custom }
 
 class RestaurantFinancePage extends StatefulWidget {
   const RestaurantFinancePage({super.key});
@@ -117,9 +111,7 @@ class _RestaurantFinancePageState extends State<RestaurantFinancePage> {
   void _applyCustomDateRange() {
     if (_customStartDate.trim().isEmpty || _customEndDate.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Укажите дату начала и дату окончания'),
-        ),
+        const SnackBar(content: Text('Укажите дату начала и дату окончания')),
       );
       return;
     }
@@ -279,109 +271,95 @@ class _RestaurantFinancePageState extends State<RestaurantFinancePage> {
                       child: CircularProgressIndicator(color: headerGreen),
                     )
                   : _error != null
-                      ? _FinanceErrorState(
-                          message: _error!,
-                          onRetry: _loadFinance,
-                        )
-                      : data == null
-                          ? _FinanceEmptyState(
-                              onRetry: _loadFinance,
-                            )
-                          : RefreshIndicator(
-                              color: headerGreen,
-                              onRefresh: _loadFinance,
-                              child: ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                                children: [
-                                  if (_showDatePicker)
-                                    Padding(
-                                      padding:
-                                          const EdgeInsets.only(bottom: 12),
-                                      child: _FinanceCustomPeriodPicker(
-                                        startDate: _customStartDate,
-                                        endDate: _customEndDate,
-                                        onStartChanged: (value) {
-                                          setState(() {
-                                            _customStartDate = value;
-                                          });
-                                        },
-                                        onEndChanged: (value) {
-                                          setState(() {
-                                            _customEndDate = value;
-                                          });
-                                        },
-                                        onApply: _applyCustomDateRange,
-                                      ),
-                                    ),
-                                  _FinanceRevenueCard(
-                                    title: 'К выплате',
-                                    amount: data.availableToWithdraw,
-                                    subtitle:
-                                        'За период: ${_periodLabel().toLowerCase()}',
-                                    money: _formatMoney,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _FinanceCommissionCard(
-                                    commissionType:
-                                        data.restaurant.hasIndividualCommission
-                                            ? 'Индивидуальная комиссия'
-                                            : 'Общая комиссия',
-                                    commissionRate: data
-                                        .restaurant
-                                        .restaurantCommissionPctOverride
-                                        ?.toDouble(),
-                                    commissionAmount: data.commissionAmount,
-                                    money: _formatMoney,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _FinanceBalancesCard(
-                                    data: data,
-                                    money: _formatMoney,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _FinanceStatsGrid(
-                                    data: data,
-                                    money: _formatMoney,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _SectionTitle(
-                                    title: 'История выплат',
-                                    trailing: '${data.payouts.rows.length}',
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _PayoutHistorySection(
-                                    rows: data.payouts.rows,
-                                    money: _formatMoney,
-                                    dateTime: _formatDateTime,
-                                    period: _formatPeriodRange,
-                                    statusLabel: _payoutStatusLabel,
-                                    statusColor: _payoutStatusColor,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _SectionTitle(
-                                    title: 'Последние доставленные заказы',
-                                    trailing:
-                                        '${data.recentDeliveredOrders.length}',
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _RecentOrdersSection(
-                                    orders: data.recentDeliveredOrders,
-                                    expandedOrderId: _expandedOrderId,
-                                    money: _formatMoney,
-                                    dateTime: _formatDateTime,
-                                    onToggleExpand: _toggleOrderExpand,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _FinanceSummarySection(
-                                    periodLabel: _periodLabel(),
-                                    data: data,
-                                    money: _formatMoney,
-                                  ),
-                                ],
+                  ? _FinanceErrorState(message: _error!, onRetry: _loadFinance)
+                  : data == null
+                  ? _FinanceEmptyState(onRetry: _loadFinance)
+                  : RefreshIndicator(
+                      color: headerGreen,
+                      onRefresh: _loadFinance,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                        children: [
+                          if (_showDatePicker)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _FinanceCustomPeriodPicker(
+                                startDate: _customStartDate,
+                                endDate: _customEndDate,
+                                onStartChanged: (value) {
+                                  setState(() {
+                                    _customStartDate = value;
+                                  });
+                                },
+                                onEndChanged: (value) {
+                                  setState(() {
+                                    _customEndDate = value;
+                                  });
+                                },
+                                onApply: _applyCustomDateRange,
                               ),
                             ),
+                          _FinanceRevenueCard(
+                            title: 'К выплате',
+                            amount: data.availableToWithdraw,
+                            subtitle:
+                                'За период: ${_periodLabel().toLowerCase()}',
+                            money: _formatMoney,
+                          ),
+                          const SizedBox(height: 12),
+                          _FinanceCommissionCard(
+                            commissionType:
+                                data.restaurant.hasIndividualCommission
+                                ? 'Индивидуальная комиссия'
+                                : 'Общая комиссия',
+                            commissionRate: data
+                                .restaurant
+                                .restaurantCommissionPctOverride
+                                ?.toDouble(),
+                            commissionAmount: data.commissionAmount,
+                            money: _formatMoney,
+                          ),
+                          const SizedBox(height: 12),
+                          _FinanceBalancesCard(data: data, money: _formatMoney),
+                          const SizedBox(height: 12),
+                          _FinanceStatsGrid(data: data, money: _formatMoney),
+                          const SizedBox(height: 16),
+                          _SectionTitle(
+                            title: 'История выплат',
+                            trailing: '${data.payouts.rows.length}',
+                          ),
+                          const SizedBox(height: 10),
+                          _PayoutHistorySection(
+                            rows: data.payouts.rows,
+                            money: _formatMoney,
+                            dateTime: _formatDateTime,
+                            period: _formatPeriodRange,
+                            statusLabel: _payoutStatusLabel,
+                            statusColor: _payoutStatusColor,
+                          ),
+                          const SizedBox(height: 16),
+                          _SectionTitle(
+                            title: 'Последние доставленные заказы',
+                            trailing: '${data.recentDeliveredOrders.length}',
+                          ),
+                          const SizedBox(height: 10),
+                          _RecentOrdersSection(
+                            orders: data.recentDeliveredOrders,
+                            expandedOrderId: _expandedOrderId,
+                            money: _formatMoney,
+                            dateTime: _formatDateTime,
+                            onToggleExpand: _toggleOrderExpand,
+                          ),
+                          const SizedBox(height: 16),
+                          _FinanceSummarySection(
+                            periodLabel: _periodLabel(),
+                            data: data,
+                            money: _formatMoney,
+                          ),
+                        ],
+                      ),
+                    ),
             ),
           ],
         ),
@@ -506,10 +484,7 @@ class _FinanceCustomPeriodPicker extends StatelessWidget {
           const SizedBox(height: 8),
           const Text(
             'Формат: YYYY-MM-DD',
-            style: TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 12,
-            ),
+            style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -715,10 +690,7 @@ class _FinanceCommissionCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.percent_rounded,
-            color: Color(0xFFF59E0B),
-          ),
+          const Icon(Icons.percent_rounded, color: Color(0xFFF59E0B)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -758,10 +730,7 @@ class _FinanceCommissionCard extends StatelessWidget {
 }
 
 class _FinanceBalancesCard extends StatelessWidget {
-  const _FinanceBalancesCard({
-    required this.data,
-    required this.money,
-  });
+  const _FinanceBalancesCard({required this.data, required this.money});
 
   final RestaurantFinanceResponse data;
   final String Function(num value) money;
@@ -820,10 +789,7 @@ class _FinanceBalancesCard extends StatelessWidget {
 }
 
 class _FinanceStatsGrid extends StatelessWidget {
-  const _FinanceStatsGrid({
-    required this.data,
-    required this.money,
-  });
+  const _FinanceStatsGrid({required this.data, required this.money});
 
   final RestaurantFinanceResponse data;
   final String Function(num value) money;
@@ -835,10 +801,7 @@ class _FinanceStatsGrid extends StatelessWidget {
         label: 'Доставленных заказов',
         value: '${data.summary.deliveredOrdersCount}',
       ),
-      (
-        label: 'Сумма блюд',
-        value: money(data.summary.grossTotal),
-      ),
+      (label: 'Сумма блюд', value: money(data.summary.grossTotal)),
       (
         label: 'Среднее начисление',
         value: money(data.summary.averagePayoutPerOrder),
@@ -898,10 +861,7 @@ class _FinanceStatsGrid extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.title,
-    required this.trailing,
-  });
+  const _SectionTitle({required this.title, required this.trailing});
 
   final String title;
   final String trailing;
@@ -1017,26 +977,17 @@ class _PayoutHistorySection extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 'Период: ${period(row.periodFrom, row.periodTo)}',
-                style: const TextStyle(
-                  color: Color(0xFFCBD5E1),
-                  fontSize: 13,
-                ),
+                style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
               ),
               const SizedBox(height: 4),
               Text(
                 'Заказов: ${row.ordersCount} · Сумма блюд: ${money(row.grossSubtotal)}',
-                style: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
               ),
               const SizedBox(height: 4),
               Text(
                 'Комиссия: ${money(row.commissionAmount)}',
-                style: const TextStyle(
-                  color: Color(0xFFFBBF24),
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12),
               ),
               const SizedBox(height: 8),
               if ((row.paymentReference ?? '').isNotEmpty)
@@ -1072,19 +1023,13 @@ class _PayoutHistorySection extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 'Создано: ${dateTime(row.createdAt)}',
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
-                  fontSize: 11,
-                ),
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
               ),
               Text(
                 row.paidAt != null
                     ? 'Оплачено: ${dateTime(row.paidAt)}'
                     : 'Оплачено: —',
-                style: const TextStyle(
-                  color: Color(0xFF6B7280),
-                  fontSize: 11,
-                ),
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
               ),
             ],
           ),
@@ -1295,10 +1240,7 @@ class _RecentOrdersSection extends StatelessWidget {
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.label,
-    required this.value,
-  });
+  const _DetailRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1312,10 +1254,7 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
             ),
           ),
           Text(
@@ -1385,10 +1324,7 @@ class _FinanceSummarySection extends StatelessWidget {
             label: 'К выплате',
             value: money(data.availableToWithdraw),
           ),
-          _DetailRow(
-            label: 'Уже выплачено',
-            value: money(data.paidAmount),
-          ),
+          _DetailRow(label: 'Уже выплачено', value: money(data.paidAmount)),
           _DetailRow(
             label: 'Назначено к выплате',
             value: money(data.assignedButUnpaidAmount),
@@ -1400,10 +1336,7 @@ class _FinanceSummarySection extends StatelessWidget {
 }
 
 class _EmptyCard extends StatelessWidget {
-  const _EmptyCard({
-    required this.title,
-    required this.subtitle,
-  });
+  const _EmptyCard({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -1419,11 +1352,7 @@ class _EmptyCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Icon(
-            Icons.inbox_outlined,
-            color: Color(0xFF6B7280),
-            size: 28,
-          ),
+          const Icon(Icons.inbox_outlined, color: Color(0xFF6B7280), size: 28),
           const SizedBox(height: 10),
           Text(
             title,
@@ -1438,10 +1367,7 @@ class _EmptyCard extends StatelessWidget {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF9CA3AF),
-              fontSize: 12,
-            ),
+            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
           ),
         ],
       ),
@@ -1450,10 +1376,7 @@ class _EmptyCard extends StatelessWidget {
 }
 
 class _FinanceErrorState extends StatelessWidget {
-  const _FinanceErrorState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _FinanceErrorState({required this.message, required this.onRetry});
 
   final String message;
   final Future<void> Function() onRetry;
@@ -1496,9 +1419,7 @@ class _FinanceErrorState extends StatelessWidget {
 }
 
 class _FinanceEmptyState extends StatelessWidget {
-  const _FinanceEmptyState({
-    required this.onRetry,
-  });
+  const _FinanceEmptyState({required this.onRetry});
 
   final Future<void> Function() onRetry;
 
@@ -1527,10 +1448,7 @@ class _FinanceEmptyState extends StatelessWidget {
         const Text(
           'Когда появятся доставленные заказы, статистика отобразится здесь',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Color(0xFF9CA3AF),
-            fontSize: 13,
-          ),
+          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
         ),
         const SizedBox(height: 14),
         Center(

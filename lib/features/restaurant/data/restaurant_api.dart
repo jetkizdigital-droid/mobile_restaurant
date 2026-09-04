@@ -31,23 +31,19 @@ class RestaurantApi {
     required String phone,
     required String workingHours,
   }) async {
-    await _client.patch(
-      '/restaurants/me',
-      {
-        'address': address,
-        'phone': phone,
-        'workingHours': workingHours,
-      },
-    );
+    await _client.patch('/restaurants/me', {
+      'address': address,
+      'phone': phone,
+      'workingHours': workingHours,
+    });
 
     return getMyRestaurant();
   }
 
   Future<RestaurantProfileData> setAcceptingOrders(bool value) async {
-    await _client.patch(
-      '/restaurants/me/accepting-orders',
-      {'isAcceptingOrders': value},
-    );
+    await _client.patch('/restaurants/me/accepting-orders', {
+      'isAcceptingOrders': value,
+    });
 
     return getMyRestaurant();
   }

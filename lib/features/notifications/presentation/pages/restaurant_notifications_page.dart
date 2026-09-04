@@ -206,8 +206,11 @@ class _RestaurantNotificationsPageState
         child: ListView(
           children: const [
             SizedBox(height: 180),
-            Icon(Icons.notifications_none_rounded,
-                color: Colors.white38, size: 48),
+            Icon(
+              Icons.notifications_none_rounded,
+              color: Colors.white38,
+              size: 48,
+            ),
             SizedBox(height: 12),
             Center(
               child: Text(

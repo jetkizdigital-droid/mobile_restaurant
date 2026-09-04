@@ -12,5 +12,3 @@ class AppColors {
   static const Color statusReady = Color(0xFF10B981);
   static const Color statusDelivered = Color(0xFF6B7280);
 }
-
-

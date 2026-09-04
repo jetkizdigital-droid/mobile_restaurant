@@ -13,9 +13,7 @@ class RestaurantFinanceApi {
   }) async {
     final resolvedPeriod = _mapUiPeriodToBackend(period);
 
-    final query = <String, String>{
-      'period': resolvedPeriod,
-    };
+    final query = <String, String>{'period': resolvedPeriod};
 
     if (resolvedPeriod == 'custom') {
       final from = (startDate ?? '').trim();
@@ -31,10 +29,7 @@ class RestaurantFinanceApi {
       query['to'] = to;
     }
 
-    final path = _buildPath(
-      '/finance/restaurant/me',
-      query,
-    );
+    final path = _buildPath('/finance/restaurant/me', query);
 
     final dynamic response = await _apiClient.get(path);
     final payload = _asMap(response);
@@ -78,10 +73,7 @@ class RestaurantFinanceApi {
   String _buildPath(String basePath, Map<String, String> query) {
     if (query.isEmpty) return basePath;
 
-    final uri = Uri(
-      path: basePath,
-      queryParameters: query,
-    );
+    final uri = Uri(path: basePath, queryParameters: query);
 
     return uri.toString();
   }

@@ -3,7 +3,7 @@ import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.d
 
 class RestaurantOrdersApi {
   RestaurantOrdersApi({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient.instance;
+    : _apiClient = apiClient ?? ApiClient.instance;
 
   final ApiClient _apiClient;
 

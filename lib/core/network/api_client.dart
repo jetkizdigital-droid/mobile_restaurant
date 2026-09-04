@@ -121,7 +121,9 @@ class ApiClient {
     int staleTokenRetries = 2,
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
-    final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
+    final accessTokenUsed = authRequired
+        ? await _storage.getAccessToken()
+        : null;
 
     developer.log(
       'API Multipart MULTI Request: POST ${uri.path}',
@@ -233,7 +235,9 @@ class ApiClient {
     int staleTokenRetries = 2,
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
-    final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
+    final accessTokenUsed = authRequired
+        ? await _storage.getAccessToken()
+        : null;
 
     developer.log('API Request: $method ${uri.path}', name: 'ApiClient');
 
@@ -391,7 +395,9 @@ class ApiClient {
     int staleTokenRetries = 2,
   }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
-    final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
+    final accessTokenUsed = authRequired
+        ? await _storage.getAccessToken()
+        : null;
 
     developer.log('API Multipart Request: POST ${uri.path}', name: 'ApiClient');
     try {
@@ -489,7 +495,8 @@ class ApiClient {
     }
 
     if (authRequired) {
-      final resolvedAccessToken = accessToken ?? await _storage.getAccessToken();
+      final resolvedAccessToken =
+          accessToken ?? await _storage.getAccessToken();
       if (resolvedAccessToken != null && resolvedAccessToken.isNotEmpty) {
         headers['Authorization'] = 'Bearer $resolvedAccessToken';
       }
@@ -597,8 +604,7 @@ class ApiClient {
           if (delay != Duration.zero) {
             await Future<void>.delayed(delay);
           }
-          final latestRefreshToken =
-              (await _storage.getRefreshToken())?.trim();
+          final latestRefreshToken = (await _storage.getRefreshToken())?.trim();
           if (latestRefreshToken != null &&
               latestRefreshToken.isNotEmpty &&
               latestRefreshToken != refreshToken) {

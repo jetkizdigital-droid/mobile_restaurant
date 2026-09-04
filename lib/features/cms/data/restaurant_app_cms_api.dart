@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:jetkiz_restaurant/core/config/app_build_info.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.dart';
 
 class RestaurantAppCmsApi {
   RestaurantAppCmsApi({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient.instance;
+    : _apiClient = apiClient ?? ApiClient.instance;
 
   final ApiClient _apiClient;
 
@@ -19,7 +20,7 @@ class RestaurantAppCmsApi {
       path: '/restaurant-app-cms/bootstrap',
       queryParameters: <String, String>{
         'platform': platform,
-        'appVersion': '1.0.0',
+        'appVersion': AppBuildInfo.versionName,
       },
     ).toString();
 
@@ -28,18 +29,14 @@ class RestaurantAppCmsApi {
       throw Exception('Некорректный ответ конфигурации приложения');
     }
 
-    return RestaurantAppBootstrap.fromJson(
-      Map<String, dynamic>.from(response),
-    );
+    return RestaurantAppBootstrap.fromJson(Map<String, dynamic>.from(response));
   }
 
   Future<void> dismissBanner(String bannerId) async {
     final id = bannerId.trim();
     if (id.isEmpty) return;
 
-    await _apiClient.post('/restaurant-app-cms/dismiss', {
-      'bannerId': id,
-    });
+    await _apiClient.post('/restaurant-app-cms/dismiss', {'bannerId': id});
   }
 
   Future<void> trackBannerEvent({

@@ -341,9 +341,7 @@ class RestaurantFinanceOrder {
       restaurantCommissionPctApplied: _toDouble(
         json['restaurantCommissionPctApplied'],
       ),
-      restaurantCommissionAmount: _toDouble(
-        json['restaurantCommissionAmount'],
-      ),
+      restaurantCommissionAmount: _toDouble(json['restaurantCommissionAmount']),
       restaurantPayoutAmount: _toDouble(json['restaurantPayoutAmount']),
       deliveredAt: _toDateTime(json['deliveredAt']),
       createdAt: _toDateTime(json['createdAt']),

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
@@ -16,10 +16,7 @@ import 'package:jetkiz_restaurant/features/orders/domain/restaurant_order_detail
 // Never mark PICKUP as DELIVERED through regular status update from this screen.
 
 class RestaurantOrderDetailsPage extends StatefulWidget {
-  const RestaurantOrderDetailsPage({
-    super.key,
-    required this.orderId,
-  });
+  const RestaurantOrderDetailsPage({super.key, required this.orderId});
 
   final String orderId;
 
@@ -28,7 +25,8 @@ class RestaurantOrderDetailsPage extends StatefulWidget {
       _RestaurantOrderDetailsPageState();
 }
 
-class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage> {
+class _RestaurantOrderDetailsPageState
+    extends State<RestaurantOrderDetailsPage> {
   late final ApiClient _apiClient;
   late final RestaurantOrdersApi _ordersApi;
 
@@ -135,6 +133,7 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
 
     _loadOrder();
   }
+
   String _cleanErrorMessage(Object error) {
     final message = error.toString().replaceFirst('Exception: ', '').trim();
 
@@ -165,10 +164,7 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
         centerTitle: true,
         title: const Text(
           'Детали заказа',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
@@ -176,16 +172,15 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
           future: _orderFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
               return _DetailsErrorState(
-                message: snapshot.error
-                    .toString()
-                    .replaceFirst('Exception: ', ''),
+                message: snapshot.error.toString().replaceFirst(
+                  'Exception: ',
+                  '',
+                ),
                 onRetry: _loadOrder,
               );
             }
@@ -250,10 +245,7 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                               ? 'Самовывоз'
                               : '${order.deliveryFee} ₸',
                         ),
-                        _InfoRow(
-                          label: 'Итого',
-                          value: '${order.total} ₸',
-                        ),
+                        _InfoRow(label: 'Итого', value: '${order.total} ₸'),
                         if (order.createdAt != null)
                           _InfoRow(
                             label: 'Создан',
@@ -295,8 +287,8 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                           value: (order.phone ?? '').trim().isNotEmpty
                               ? order.phone!.trim()
                               : ((order.user?.phone ?? '').trim().isNotEmpty
-                                  ? order.user!.phone!.trim()
-                                  : 'Не указан'),
+                                    ? order.user!.phone!.trim()
+                                    : 'Не указан'),
                         ),
                         if (order.isPickup)
                           const _InfoRow(
@@ -346,9 +338,8 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                           ),
                           _InfoRow(
                             label: 'Телефон',
-                            value: (order.courier!.phone ?? '')
-                                    .trim()
-                                    .isNotEmpty
+                            value:
+                                (order.courier!.phone ?? '').trim().isNotEmpty
                                 ? order.courier!.phone!.trim()
                                 : 'Не указан',
                           ),
@@ -395,11 +386,7 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   static String _two(int value) => value.toString().padLeft(2, '0');
 }
 
-enum _PickupIssueResult {
-  none,
-  issued,
-  alreadyIssued,
-}
+enum _PickupIssueResult { none, issued, alreadyIssued }
 
 class _PickupCodeBottomSheet extends StatefulWidget {
   const _PickupCodeBottomSheet({
@@ -485,9 +472,7 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
         decoration: const BoxDecoration(
           color: Color(0xFF131E2D),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(24),
-          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
           top: false,
@@ -557,15 +542,11 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF26364A),
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF26364A)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF26364A),
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF26364A)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -576,9 +557,7 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
                   ),
                   errorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFFF8A8A),
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFFFF8A8A)),
                   ),
                   focusedErrorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -629,11 +608,9 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
     );
   }
 }
+
 class _PickupIssueCard extends StatelessWidget {
-  const _PickupIssueCard({
-    required this.order,
-    required this.onIssuePressed,
-  });
+  const _PickupIssueCard({required this.order, required this.onIssuePressed});
 
   final RestaurantOrderDetails order;
   final VoidCallback? onIssuePressed;
@@ -643,14 +620,14 @@ class _PickupIssueCard extends StatelessWidget {
     final title = order.isIssuedPickup
         ? 'Заказ выдан'
         : order.isReadyForPickupIssue
-            ? 'Готов к выдаче'
-            : 'Самовывоз';
+        ? 'Готов к выдаче'
+        : 'Самовывоз';
 
     final description = order.isIssuedPickup
         ? 'Код клиента подтверждён. Заказ закрыт как выданный.'
         : order.isReadyForPickupIssue
-            ? 'Попросите клиента назвать или показать код получения.'
-            : 'Клиент заберёт заказ сам. Курьер для этого заказа не нужен.';
+        ? 'Попросите клиента назвать или показать код получения.'
+        : 'Клиент заберёт заказ сам. Курьер для этого заказа не нужен.';
 
     return _SectionCard(
       child: Column(
@@ -658,11 +635,7 @@ class _PickupIssueCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.storefront,
-                color: Color(0xFF70D74D),
-                size: 22,
-              ),
+              const Icon(Icons.storefront, color: Color(0xFF70D74D), size: 22),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -695,9 +668,7 @@ class _PickupIssueCard extends StatelessWidget {
                 icon: const Icon(Icons.password),
                 label: const Text(
                   'Выдать заказ',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF489F2A),
@@ -716,9 +687,7 @@ class _PickupIssueCard extends StatelessWidget {
 }
 
 class _FulfillmentBadge extends StatelessWidget {
-  const _FulfillmentBadge({
-    required this.isPickup,
-  });
+  const _FulfillmentBadge({required this.isPickup});
 
   final bool isPickup;
 
@@ -758,9 +727,7 @@ class _FulfillmentBadge extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.child,
-  });
+  const _SectionCard({required this.child});
 
   final Widget child;
 
@@ -797,9 +764,7 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _OrderItemTile extends StatelessWidget {
-  const _OrderItemTile({
-    required this.item,
-  });
+  const _OrderItemTile({required this.item});
 
   final RestaurantOrderDetailsItem item;
 
@@ -831,10 +796,7 @@ class _OrderItemTile extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   '${item.quantity} × ${item.price} ₸',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ],
             ),
@@ -855,10 +817,7 @@ class _OrderItemTile extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    required this.value,
-  });
+  const _InfoRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -898,10 +857,7 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _DetailsErrorState extends StatelessWidget {
-  const _DetailsErrorState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _DetailsErrorState({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
@@ -914,19 +870,12 @@ class _DetailsErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.error_outline,
-              color: Color(0xFFFF8A8A),
-              size: 40,
-            ),
+            const Icon(Icons.error_outline, color: Color(0xFFFF8A8A), size: 40),
             const SizedBox(height: 12),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -1089,4 +1038,3 @@ class _OrderStatusMeta {
     }
   }
 }
-

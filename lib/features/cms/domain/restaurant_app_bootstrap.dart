@@ -23,9 +23,7 @@ class RestaurantAppBootstrap {
       configVersion: _toInt(json['configVersion']),
       restaurant: RestaurantCmsRestaurant.fromJson(_map(json['restaurant'])),
       support: RestaurantCmsSupport.fromJson(_map(json['support'])),
-      maintenance: RestaurantCmsMaintenance.fromJson(
-        _map(json['maintenance']),
-      ),
+      maintenance: RestaurantCmsMaintenance.fromJson(_map(json['maintenance'])),
       featureFlags: featureRaw is Map
           ? featureRaw.map(
               (key, value) => MapEntry(
@@ -40,9 +38,9 @@ class RestaurantAppBootstrap {
                 key.toString(),
                 value is List
                     ? value
-                        .whereType<Map>()
-                        .map((item) => Map<String, dynamic>.from(item))
-                        .toList(growable: false)
+                          .whereType<Map>()
+                          .map((item) => Map<String, dynamic>.from(item))
+                          .toList(growable: false)
                     : const <Map<String, dynamic>>[],
               ),
             )
@@ -166,8 +164,8 @@ class RestaurantCmsMaintenance {
       bodyKk: _nullable(json['bodyKk']),
       affectedFeatures: json['affectedFeatures'] is List
           ? (json['affectedFeatures'] as List)
-              .map((item) => item.toString())
-              .toList(growable: false)
+                .map((item) => item.toString())
+                .toList(growable: false)
           : const <String>[],
     );
   }

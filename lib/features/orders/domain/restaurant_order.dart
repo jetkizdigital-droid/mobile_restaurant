@@ -146,7 +146,9 @@ class RestaurantOrder {
 
       items: rawItems
           .whereType<Map>()
-          .map((e) => RestaurantOrderItem.fromJson(Map<String, dynamic>.from(e)))
+          .map(
+            (e) => RestaurantOrderItem.fromJson(Map<String, dynamic>.from(e)),
+          )
           .toList(),
       itemsCount: _toInt(json['itemsCount']) ?? rawItems.length,
       createdAt: _toDateTime(json['createdAt']),
@@ -263,11 +265,13 @@ class RestaurantOrderAddress {
     return RestaurantOrderAddress(
       id: RestaurantOrder._toNullableString(json['id']),
       title: RestaurantOrder._toNullableString(json['title']),
-      address: RestaurantOrder._toNullableString(json['address']) ??
+      address:
+          RestaurantOrder._toNullableString(json['address']) ??
           RestaurantOrder._toNullableString(json['addressText']) ??
           RestaurantOrder._toNullableString(json['fullAddress']),
       floor: RestaurantOrder._toNullableString(json['floor']),
-      door: RestaurantOrder._toNullableString(json['door']) ??
+      door:
+          RestaurantOrder._toNullableString(json['door']) ??
           RestaurantOrder._toNullableString(json['apartment']),
       entrance: RestaurantOrder._toNullableString(json['entrance']),
       intercom: RestaurantOrder._toNullableString(json['intercom']),

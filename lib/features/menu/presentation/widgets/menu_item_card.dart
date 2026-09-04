@@ -49,10 +49,7 @@ class MenuItemCard extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFF25324A),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFF25324A), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -234,11 +231,7 @@ class _ImagePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Icon(
-        Icons.image_outlined,
-        color: Color(0xFF475569),
-        size: 24,
-      ),
+      child: Icon(Icons.image_outlined, color: Color(0xFF475569), size: 24),
     );
   }
 }

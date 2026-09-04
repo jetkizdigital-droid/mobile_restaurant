@@ -40,13 +40,11 @@ class RestaurantMetricsData {
       period: RestaurantMetricsPeriod.fromJson(
         _asMap(json['period']) ?? const <String, dynamic>{},
       ),
-      overview: RestaurantMetricsOverview.fromJson(
-        <String, dynamic>{
-          ...json,
-          ...revenue,
-          ...rates,
-        },
-      ),
+      overview: RestaurantMetricsOverview.fromJson(<String, dynamic>{
+        ...json,
+        ...revenue,
+        ...rates,
+      }),
       daily: _asList(json['daily'])
           .map((e) => RestaurantDailyMetric.fromJson(_asMap(e) ?? const {}))
           .toList(),

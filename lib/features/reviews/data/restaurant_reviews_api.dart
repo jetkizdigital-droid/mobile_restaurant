@@ -32,23 +32,18 @@ class RestaurantReviewsApi {
 
     final items = itemsRaw is List
         ? itemsRaw
-            .whereType<Map>()
-            .map((e) => RestaurantReview.fromJson(Map<String, dynamic>.from(e)))
-            .toList(growable: false)
+              .whereType<Map>()
+              .map(
+                (e) => RestaurantReview.fromJson(Map<String, dynamic>.from(e)),
+              )
+              .toList(growable: false)
         : <RestaurantReview>[];
 
     final meta = metaRaw is Map
         ? ReviewsMeta.fromJson(Map<String, dynamic>.from(metaRaw))
-        : ReviewsMeta(
-            page: page,
-            limit: limit,
-            total: items.length,
-          );
+        : ReviewsMeta(page: page, limit: limit, total: items.length);
 
-    return RestaurantReviewsPageData(
-      items: items,
-      meta: meta,
-    );
+    return RestaurantReviewsPageData(items: items, meta: meta);
   }
 
   Future<ReviewResponse> saveResponse({
@@ -84,10 +79,7 @@ class RestaurantReviewsApi {
 }
 
 class RestaurantReviewsPageData {
-  const RestaurantReviewsPageData({
-    required this.items,
-    required this.meta,
-  });
+  const RestaurantReviewsPageData({required this.items, required this.meta});
 
   final List<RestaurantReview> items;
   final ReviewsMeta meta;

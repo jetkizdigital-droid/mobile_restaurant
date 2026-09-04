@@ -18,9 +18,7 @@ class MenuCreateActionSheet extends StatelessWidget {
         Positioned.fill(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.35),
-            ),
+            child: Container(color: Colors.black.withValues(alpha: 0.35)),
           ),
         ),
         Align(
@@ -35,14 +33,9 @@ class MenuCreateActionSheet extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF1C2C44),
-                    Color(0xFF0F1B2D),
-                  ],
+                  colors: [Color(0xFF1C2C44), Color(0xFF0F1B2D)],
                 ),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.10),
-                ),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.35),
@@ -139,9 +132,7 @@ class _ActionCard extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: background,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -154,11 +145,7 @@ class _ActionCard extends StatelessWidget {
                     color: iconBg,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    icon,
-                    color: accent,
-                    size: 20,
-                  ),
+                  child: Icon(icon, color: accent, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

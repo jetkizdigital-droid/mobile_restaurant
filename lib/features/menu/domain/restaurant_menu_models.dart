@@ -2,10 +2,7 @@ class RestaurantMenuData {
   final List<RestaurantMenuCategory> categories;
   final List<RestaurantMenuItem> items;
 
-  RestaurantMenuData({
-    required this.categories,
-    required this.items,
-  });
+  RestaurantMenuData({required this.categories, required this.items});
 
   factory RestaurantMenuData.fromJson(Map<String, dynamic> json) {
     return RestaurantMenuData(
@@ -40,7 +37,8 @@ class RestaurantMenuCategory {
     this.sortOrder = 0,
   });
 
-  String get title => titleRu.trim().isNotEmpty ? titleRu.trim() : titleKk.trim();
+  String get title =>
+      titleRu.trim().isNotEmpty ? titleRu.trim() : titleKk.trim();
 
   factory RestaurantMenuCategory.fromJson(Map<String, dynamic> json) {
     final ru = (json['titleRu'] ?? json['title'] ?? '').toString();
@@ -93,7 +91,8 @@ class RestaurantMenuItem {
       isAvailable: json['isAvailable'] == null
           ? true
           : json['isAvailable'] == true,
-      categoryId: json['categoryId']?.toString() ??
+      categoryId:
+          json['categoryId']?.toString() ??
           json['category']?['id']?.toString() ??
           '',
       imageUrl: json['imageUrl']?.toString(),
@@ -101,9 +100,7 @@ class RestaurantMenuItem {
       weight: _nullableString(
         json['weight'] ?? json['weightText'] ?? json['portion'],
       ),
-      composition: _nullableString(
-        json['composition'] ?? json['ingredients'],
-      ),
+      composition: _nullableString(json['composition'] ?? json['ingredients']),
       isDrink: json['isDrink'] == true,
       images: ((json['images'] as List?) ?? const [])
           .map(

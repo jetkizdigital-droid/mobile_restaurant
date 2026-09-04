@@ -2,7 +2,7 @@ import 'package:jetkiz_restaurant/core/network/api_client.dart';
 
 class RestaurantNotificationsApi {
   RestaurantNotificationsApi({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient.instance;
+    : _apiClient = apiClient ?? ApiClient.instance;
 
   final ApiClient _apiClient;
 
@@ -22,11 +22,13 @@ class RestaurantNotificationsApi {
     final json = Map<String, dynamic>.from(response);
     final items = json['items'] is List
         ? (json['items'] as List)
-            .whereType<Map>()
-            .map((item) => RestaurantNotification.fromJson(
+              .whereType<Map>()
+              .map(
+                (item) => RestaurantNotification.fromJson(
                   Map<String, dynamic>.from(item),
-                ))
-            .toList(growable: false)
+                ),
+              )
+              .toList(growable: false)
         : const <RestaurantNotification>[];
 
     return RestaurantNotificationsPageData(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -13,14 +14,17 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final firebaseReady = await _initializeFirebaseSafely();
-
   if (firebaseReady) {
-    await _configureCrashReporting();
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    await RestaurantPushNotificationService.instance.init();
   }
 
+  // UI availability is more important than observability or push bootstrap.
+  // Neither Crashlytics nor FCM is allowed to hold the restaurant app startup.
   runApp(const JetkizRestaurantApp());
+
+  if (firebaseReady) {
+    unawaited(_initializeFirebaseServicesSafely());
+  }
 }
 
 Future<bool> _initializeFirebaseSafely() async {
@@ -28,15 +32,33 @@ Future<bool> _initializeFirebaseSafely() async {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp();
     }
-
     return true;
   } catch (error, stackTrace) {
     if (kDebugMode) {
       debugPrint('Firebase initialization failed: $error');
       debugPrint('$stackTrace');
     }
-
     return false;
+  }
+}
+
+Future<void> _initializeFirebaseServicesSafely() async {
+  try {
+    await _configureCrashReporting();
+  } catch (error, stackTrace) {
+    if (kDebugMode) {
+      debugPrint('Crashlytics bootstrap failed: $error');
+      debugPrint('$stackTrace');
+    }
+  }
+
+  try {
+    await RestaurantPushNotificationService.instance.init();
+  } catch (error, stackTrace) {
+    if (kDebugMode) {
+      debugPrint('Restaurant push bootstrap failed: $error');
+      debugPrint('$stackTrace');
+    }
   }
 }
 
@@ -45,9 +67,7 @@ Future<void> _configureCrashReporting() async {
   await crashlytics.setCrashlyticsCollectionEnabled(kReleaseMode);
 
   FlutterError.onError = (details) {
-    if (kDebugMode) {
-      FlutterError.presentError(details);
-    }
+    if (kDebugMode) FlutterError.presentError(details);
     crashlytics.recordFlutterFatalError(details);
   };
 

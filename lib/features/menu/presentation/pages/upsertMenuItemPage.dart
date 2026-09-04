@@ -8,11 +8,7 @@ import '../../data/restaurant_menu_api.dart';
 import '../../domain/restaurant_menu_models.dart';
 
 class UpsertMenuItemPage extends StatefulWidget {
-  const UpsertMenuItemPage({
-    super.key,
-    required this.restaurantId,
-    this.item,
-  });
+  const UpsertMenuItemPage({super.key, required this.restaurantId, this.item});
 
   final String restaurantId;
   final RestaurantMenuItem? item;
@@ -92,8 +88,9 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
         _categories = parsed.categories;
         if (_selectedCategoryId == null ||
             !_categories.any((item) => item.id == _selectedCategoryId)) {
-          _selectedCategoryId =
-              _categories.isNotEmpty ? _categories.first.id : null;
+          _selectedCategoryId = _categories.isNotEmpty
+              ? _categories.first.id
+              : null;
         }
         _isLoading = false;
       });
@@ -351,7 +348,8 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                 children: [
                   if (_categories.isEmpty)
                     _ErrorCard(
-                      text: _errorText ??
+                      text:
+                          _errorText ??
                           'Сначала создайте хотя бы одну категорию меню',
                       onRetry: _loadCategories,
                     )
@@ -394,8 +392,10 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                           ? 'Блюдо видно клиентам'
                           : 'Блюдо находится в стоп-листе',
                       value: _isAvailable,
-                      onChanged: RestaurantAppCmsSession.instance
-                              .featureEnabled('STOP_LIST_ENABLED')
+                      onChanged:
+                          RestaurantAppCmsSession.instance.featureEnabled(
+                            'STOP_LIST_ENABLED',
+                          )
                           ? (value) => setState(() => _isAvailable = value)
                           : null,
                     ),

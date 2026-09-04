@@ -13,10 +13,7 @@ class JetkizRestaurantApp extends StatelessWidget {
       navigatorKey: RestaurantPushNotificationService.navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Jetkiz Restaurant',
-      supportedLocales: const [
-        Locale('ru'),
-        Locale('kk'),
-      ],
+      supportedLocales: const [Locale('ru'), Locale('kk')],
       localeResolutionCallback: (deviceLocale, supportedLocales) {
         // Product rule: Russian is the default language. Only a Kazakh device
         // locale switches the first launch to Kazakh; every other locale falls

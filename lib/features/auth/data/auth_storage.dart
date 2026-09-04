@@ -36,10 +36,7 @@ class AuthStorage {
       return;
     }
 
-    await _storage.write(
-      key: _selectedRestaurantIdKey,
-      value: normalized,
-    );
+    await _storage.write(key: _selectedRestaurantIdKey, value: normalized);
   }
 
   Future<String?> getSelectedRestaurantId() async {

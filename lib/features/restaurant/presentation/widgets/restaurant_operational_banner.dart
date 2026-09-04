@@ -60,9 +60,7 @@ class _RestaurantOperationalBannerState
     _isRefreshing = true;
 
     try {
-      final latest = await RestaurantApi(
-        ApiClient.instance,
-      ).getMyRestaurant();
+      final latest = await RestaurantApi(ApiClient.instance).getMyRestaurant();
       if (!mounted) return;
       setState(() {
         _profile = latest;
@@ -137,20 +135,20 @@ class _RestaurantOperationalBannerState
     final background = blocked || needsAttention
         ? const Color(0xFF3A1A1A)
         : approved
-            ? const Color(0xFF102717)
-            : const Color(0xFF30270F);
+        ? const Color(0xFF102717)
+        : const Color(0xFF30270F);
     final border = blocked || needsAttention
         ? const Color(0xFF7F1D1D)
         : approved
-            ? const Color(0xFF2F6E2B)
-            : const Color(0xFF6B5315);
+        ? const Color(0xFF2F6E2B)
+        : const Color(0xFF6B5315);
     final icon = blocked || needsAttention
         ? Icons.warning_amber_rounded
         : approved
-            ? (profile.isEffectivelyTakingOrders
-                ? Icons.storefront_rounded
-                : Icons.pause_circle_outline_rounded)
-            : Icons.hourglass_top_rounded;
+        ? (profile.isEffectivelyTakingOrders
+              ? Icons.storefront_rounded
+              : Icons.pause_circle_outline_rounded)
+        : Icons.hourglass_top_rounded;
 
     String title;
     String description;
@@ -170,7 +168,8 @@ class _RestaurantOperationalBannerState
       description = 'Новые заказы доступны ресторану.';
     } else {
       title = 'Приём заказов приостановлен';
-      description = 'Текущие заказы продолжают выполняться. Новые не принимаются.';
+      description =
+          'Текущие заказы продолжают выполняться. Новые не принимаются.';
     }
 
     return Container(

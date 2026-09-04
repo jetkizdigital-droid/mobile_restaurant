@@ -18,14 +18,14 @@ class AppConfig {
       return configured;
     }
 
-    return kReleaseMode
-        ? 'https://api.jetkiz.asia'
-        : 'http://127.0.0.1:3000';
+    return kReleaseMode ? 'https://api.jetkiz.asia' : 'http://127.0.0.1:3000';
   }
 
   static bool _isSafeReleaseUrl(String value) {
     final uri = Uri.tryParse(value);
-    if (uri == null || uri.scheme.toLowerCase() != 'https' || uri.host.isEmpty) {
+    if (uri == null ||
+        uri.scheme.toLowerCase() != 'https' ||
+        uri.host.isEmpty) {
       return false;
     }
 

@@ -1,4 +1,4 @@
-﻿import 'package:jetkiz_restaurant/core/network/api_client.dart';
+import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 
 // JETKIZ RESTAURANT APP
@@ -20,27 +20,19 @@ class AuthApi {
   final AuthStorage _storage = AuthStorage();
 
   Future<void> requestCode({required String phone}) async {
-    await _client.post(
-      '/auth/request-code',
-      {
-        'phone': phone,
-      },
-      authRequired: false,
-    );
+    await _client.post('/auth/request-code', {
+      'phone': phone,
+    }, authRequired: false);
   }
 
   Future<Map<String, dynamic>> verifyCode({
     required String phone,
     required String code,
   }) async {
-    final response = await _client.post(
-      '/auth/verify-code',
-      {
-        'phone': phone,
-        'code': code,
-      },
-      authRequired: false,
-    );
+    final response = await _client.post('/auth/verify-code', {
+      'phone': phone,
+      'code': code,
+    }, authRequired: false);
 
     if (response is! Map<String, dynamic>) {
       throw Exception('Некорректный формат ответа verify-code');
@@ -61,19 +53,15 @@ class AuthApi {
     required String workingHoursFrom,
     required String workingHoursTo,
   }) async {
-    final response = await _client.post(
-      '/restaurant-auth/register',
-      {
-        'phone': phone,
-        'code': code,
-        'nameRu': nameRu,
-        'nameKk': nameKk,
-        'address': address,
-        'workingHoursFrom': workingHoursFrom,
-        'workingHoursTo': workingHoursTo,
-      },
-      authRequired: false,
-    );
+    final response = await _client.post('/restaurant-auth/register', {
+      'phone': phone,
+      'code': code,
+      'nameRu': nameRu,
+      'nameKk': nameKk,
+      'address': address,
+      'workingHoursFrom': workingHoursFrom,
+      'workingHoursTo': workingHoursTo,
+    }, authRequired: false);
 
     if (response is! Map<String, dynamic>) {
       throw Exception('Некорректный формат ответа restaurant-auth/register');
@@ -126,7 +114,8 @@ class AuthApi {
 
     final savedRestaurantId = await _storage.getSelectedRestaurantId();
 
-    if (savedRestaurantId != null && restaurantIds.contains(savedRestaurantId)) {
+    if (savedRestaurantId != null &&
+        restaurantIds.contains(savedRestaurantId)) {
       _client.setSelectedRestaurantId(savedRestaurantId);
       return;
     }
@@ -135,9 +124,9 @@ class AuthApi {
 
     final selectedRestaurantId =
         backendDefaultRestaurantId != null &&
-                restaurantIds.contains(backendDefaultRestaurantId)
-            ? backendDefaultRestaurantId
-            : restaurantIds.first;
+            restaurantIds.contains(backendDefaultRestaurantId)
+        ? backendDefaultRestaurantId
+        : restaurantIds.first;
 
     await _storage.saveSelectedRestaurantId(selectedRestaurantId);
     _client.setSelectedRestaurantId(selectedRestaurantId);

@@ -138,10 +138,15 @@ class RestaurantProfileData {
   bool get isOpenBySchedule => isWithinWorkingHours ?? status == 'OPEN';
   bool get isEffectivelyTakingOrders =>
       effectiveAcceptingOrders ??
-      (isTakingOrders && isOpenBySchedule && isApproved && isPublished && !isBlocked);
+      (isTakingOrders &&
+          isOpenBySchedule &&
+          isApproved &&
+          isPublished &&
+          !isBlocked);
 
   bool get canEnableAcceptingOrders =>
-      (canAcceptOrders ?? (isApproved && isPublished && !isBlocked && isOpenBySchedule));
+      (canAcceptOrders ??
+      (isApproved && isPublished && !isBlocked && isOpenBySchedule));
 
   bool get canResubmitForReview =>
       normalizedOnboardingStatus == 'REJECTED' ||
@@ -343,8 +348,7 @@ class RestaurantProfileData {
       blockReason: clearBlockReason ? null : (blockReason ?? this.blockReason),
       isInApp: isInApp ?? this.isInApp,
       isAcceptingOrders: isAcceptingOrders ?? this.isAcceptingOrders,
-      isWithinWorkingHours:
-          isWithinWorkingHours ?? this.isWithinWorkingHours,
+      isWithinWorkingHours: isWithinWorkingHours ?? this.isWithinWorkingHours,
       canAcceptOrders: canAcceptOrders ?? this.canAcceptOrders,
       effectiveAcceptingOrders:
           effectiveAcceptingOrders ?? this.effectiveAcceptingOrders,
@@ -352,8 +356,10 @@ class RestaurantProfileData {
       sortOrder: sortOrder ?? this.sortOrder,
       restaurantCommissionPctOverride: clearRestaurantCommissionPctOverride
           ? null
-          : (restaurantCommissionPctOverride ?? this.restaurantCommissionPctOverride),
-      effectiveRestaurantCommissionPct: effectiveRestaurantCommissionPct ??
+          : (restaurantCommissionPctOverride ??
+                this.restaurantCommissionPctOverride),
+      effectiveRestaurantCommissionPct:
+          effectiveRestaurantCommissionPct ??
           this.effectiveRestaurantCommissionPct,
       imageUrl: clearImageUrl ? null : (imageUrl ?? this.imageUrl),
       localImagePath: clearLocalImagePath

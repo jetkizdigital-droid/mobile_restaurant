@@ -76,7 +76,8 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     final restaurant = data['restaurant'];
 
     if (restaurant is Map) {
-      final id = _readId(restaurant['id']) ?? _readId(restaurant['restaurantId']);
+      final id =
+          _readId(restaurant['id']) ?? _readId(restaurant['restaurantId']);
 
       if (id != null) {
         return id;
@@ -87,7 +88,8 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
 
     if (ownedRestaurant is Map) {
       final id =
-          _readId(ownedRestaurant['id']) ?? _readId(ownedRestaurant['restaurantId']);
+          _readId(ownedRestaurant['id']) ??
+          _readId(ownedRestaurant['restaurantId']);
 
       if (id != null) {
         return id;
@@ -97,7 +99,8 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     final restaurantProfile = data['restaurantProfile'];
 
     if (restaurantProfile is Map) {
-      final id = _readId(restaurantProfile['id']) ??
+      final id =
+          _readId(restaurantProfile['id']) ??
           _readId(restaurantProfile['restaurantId']);
 
       if (id != null) {
@@ -136,7 +139,8 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         final restaurantFromAccess = access['restaurant'];
 
         if (restaurantFromAccess is Map) {
-          final id = _readId(restaurantFromAccess['id']) ??
+          final id =
+              _readId(restaurantFromAccess['id']) ??
               _readId(restaurantFromAccess['restaurantId']);
 
           if (id != null) {
@@ -375,9 +379,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
 
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => UpsertMenuItemPage(
-          restaurantId: restaurantId,
-        ),
+        builder: (_) => UpsertMenuItemPage(restaurantId: restaurantId),
       ),
     );
 
@@ -441,10 +443,8 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
 
     final updated = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => UpsertMenuItemPage(
-          restaurantId: restaurantId,
-          item: item,
-        ),
+        builder: (_) =>
+            UpsertMenuItemPage(restaurantId: restaurantId, item: item),
       ),
     );
 
@@ -460,9 +460,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
       ?..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            message.trim().isEmpty ? 'Ошибка' : message.trim(),
-          ),
+          content: Text(message.trim().isEmpty ? 'Ошибка' : message.trim()),
         ),
       );
   }
@@ -493,10 +491,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
             backgroundColor: const Color(0xFF489F2A),
             foregroundColor: Colors.white,
             shape: const CircleBorder(
-              side: BorderSide(
-                color: Color(0xFF020817),
-                width: 4,
-              ),
+              side: BorderSide(color: Color(0xFF020817), width: 4),
             ),
             child: const Icon(Icons.add, size: 28),
           ),
@@ -535,11 +530,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(top: 180),
         children: const [
-          Center(
-            child: CircularProgressIndicator(
-              color: Color(0xFF489F2A),
-            ),
-          ),
+          Center(child: CircularProgressIndicator(color: Color(0xFF489F2A))),
         ],
       );
     }
@@ -549,19 +540,12 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(24, 140, 24, 120),
         children: [
-          const Icon(
-            Icons.error_outline,
-            color: Color(0xFF6B7280),
-            size: 46,
-          ),
+          const Icon(Icons.error_outline, color: Color(0xFF6B7280), size: 46),
           const SizedBox(height: 14),
           Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 16),
           Center(
@@ -604,10 +588,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
           Text(
             'Добавьте первое блюдо в меню',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF9CA3AF),
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
           ),
         ],
       );
@@ -648,10 +629,7 @@ class _MenuHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tabs = <String>[
-      'Все',
-      ...categories.map((e) => e.title),
-    ];
+    final tabs = <String>['Все', ...categories.map((e) => e.title)];
 
     return Container(
       width: double.infinity,

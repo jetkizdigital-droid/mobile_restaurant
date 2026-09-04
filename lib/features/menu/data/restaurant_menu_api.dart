@@ -10,7 +10,7 @@ class RestaurantMenuApi {
   final ApiClient _client;
 
   RestaurantMenuApi({ApiClient? client})
-      : _client = client ?? ApiClient.instance;
+    : _client = client ?? ApiClient.instance;
 
   Future<Map<String, dynamic>> getRestaurantMe() async {
     final response = await _client.get('/restaurants/me');
@@ -36,10 +36,9 @@ class RestaurantMenuApi {
     required bool value,
   }) async {
     _requireFeature('STOP_LIST_ENABLED', 'Стоп-лист временно недоступен');
-    await _client.patch(
-      '/restaurants/$restaurantId/menu/products/$productId',
-      {'isAvailable': value},
-    );
+    await _client.patch('/restaurants/$restaurantId/menu/products/$productId', {
+      'isAvailable': value,
+    });
   }
 
   Future<Map<String, dynamic>> createProduct(
@@ -137,13 +136,12 @@ class RestaurantMenuApi {
 
     final totalImages = (mainImage == null ? 0 : 1) + otherImages.length;
     if (totalImages > maxProductImages) {
-      throw Exception(
-        'Можно загрузить максимум $maxProductImages фото блюда',
-      );
+      throw Exception('Можно загрузить максимум $maxProductImages фото блюда');
     }
 
-    final preparedMain =
-        mainImage == null ? null : await _prepareUploadImage(mainImage);
+    final preparedMain = mainImage == null
+        ? null
+        : await _prepareUploadImage(mainImage);
     final preparedOthers = <File>[];
     for (final image in otherImages) {
       preparedOthers.add(await _prepareUploadImage(image));
@@ -166,9 +164,7 @@ class RestaurantMenuApi {
     _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
     if (images.isEmpty) return;
     if (images.length > maxProductImages) {
-      throw Exception(
-        'Можно загрузить максимум $maxProductImages фото блюда',
-      );
+      throw Exception('Можно загрузить максимум $maxProductImages фото блюда');
     }
 
     final prepared = <File>[];

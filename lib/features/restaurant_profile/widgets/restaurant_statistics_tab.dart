@@ -8,10 +8,7 @@ import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_metrics_
 import 'package:jetkiz_restaurant/features/reviews/presentation/pages/restaurant_reviews_page.dart';
 
 class RestaurantStatisticsTab extends StatefulWidget {
-  const RestaurantStatisticsTab({
-    super.key,
-    required this.restaurantId,
-  });
+  const RestaurantStatisticsTab({super.key, required this.restaurantId});
 
   final String restaurantId;
 
@@ -20,13 +17,7 @@ class RestaurantStatisticsTab extends StatefulWidget {
       _RestaurantStatisticsTabState();
 }
 
-enum _StatisticsPeriodMode {
-  day,
-  week,
-  month,
-  year,
-  custom,
-}
+enum _StatisticsPeriodMode { day, week, month, year, custom }
 
 class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
   late final RestaurantMetricsApi _metricsApi;
@@ -214,9 +205,7 @@ class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
   void _applyCustomPeriod() {
     if (_customFrom == null || _customTo == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Выберите даты начала и конца периода'),
-        ),
+        const SnackBar(content: Text('Выберите даты начала и конца периода')),
       );
       return;
     }
@@ -281,9 +270,7 @@ class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
       future: _metricsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
@@ -295,10 +282,7 @@ class _RestaurantStatisticsTabState extends State<RestaurantStatisticsTab> {
                 children: [
                   Text(
                     'Ошибка загрузки статистики: ${snapshot.error}',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
@@ -514,8 +498,9 @@ class _ReviewsNavigationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ratingText =
-        averageRating > 0 ? averageRating.toStringAsFixed(1) : '0.0';
+    final ratingText = averageRating > 0
+        ? averageRating.toStringAsFixed(1)
+        : '0.0';
 
     return Material(
       color: Colors.transparent,
@@ -674,10 +659,7 @@ class _StatisticsPeriodCard extends StatelessWidget {
           ),
           if (isCustom) ...[
             const SizedBox(height: 14),
-            const Divider(
-              height: 1,
-              color: Color(0xFF25344B),
-            ),
+            const Divider(height: 1, color: Color(0xFF25344B)),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -716,9 +698,7 @@ class _StatisticsPeriodCard extends StatelessWidget {
                 ),
                 child: const Text(
                   'Применить период',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ),
@@ -729,10 +709,7 @@ class _StatisticsPeriodCard extends StatelessWidget {
               const Expanded(
                 child: Text(
                   'Выбранный период:',
-                  style: TextStyle(
-                    color: Colors.white54,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ),
               Expanded(
@@ -791,9 +768,7 @@ class _DateField extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFF0E1626),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: const Color(0xFF2A3A52),
-                ),
+                border: Border.all(color: const Color(0xFF2A3A52)),
               ),
               child: Row(
                 children: [
@@ -900,16 +875,9 @@ class _MetricTile extends StatelessWidget {
           Container(
             width: 34,
             height: 34,
-            decoration: BoxDecoration(
-              color: iconBg,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
             alignment: Alignment.center,
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 18,
-            ),
+            child: Icon(icon, color: iconColor, size: 18),
           ),
           const Spacer(),
           Text(
@@ -949,10 +917,7 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
-enum _ChartMode {
-  revenue,
-  orders,
-}
+enum _ChartMode { revenue, orders }
 
 class _LineChartCard extends StatelessWidget {
   const _LineChartCard({
@@ -1011,10 +976,7 @@ class _LineChartCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(
-              color: Colors.white38,
-              fontSize: 11,
-            ),
+            style: const TextStyle(color: Colors.white38, fontSize: 11),
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -1059,10 +1021,7 @@ class _LineChartCard extends StatelessWidget {
 }
 
 class _MiniLineChart extends StatelessWidget {
-  const _MiniLineChart({
-    required this.values,
-    required this.lineColor,
-  });
+  const _MiniLineChart({required this.values, required this.lineColor});
 
   final List<double> values;
   final Color lineColor;
@@ -1108,10 +1067,7 @@ class _MiniLineChartPainter extends CustomPainter {
 
     final maxValue = math.max<double>(
       1.0,
-      safeValues.fold<double>(
-        0.0,
-        (prev, e) => math.max<double>(prev, e),
-      ),
+      safeValues.fold<double>(0.0, (prev, e) => math.max<double>(prev, e)),
     );
 
     final dx = safeValues.length == 1
@@ -1142,10 +1098,7 @@ class _MiniLineChartPainter extends CustomPainter {
 
     final fillPaint = Paint()
       ..shader = LinearGradient(
-        colors: [
-          lineColor.withOpacity(0.28),
-          lineColor.withOpacity(0.02),
-        ],
+        colors: [lineColor.withOpacity(0.28), lineColor.withOpacity(0.02)],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
@@ -1179,9 +1132,7 @@ class _MiniLineChartPainter extends CustomPainter {
 }
 
 class _TrendCard extends StatelessWidget {
-  const _TrendCard({
-    required this.trends,
-  });
+  const _TrendCard({required this.trends});
 
   final RestaurantTrendStats trends;
 
@@ -1222,10 +1173,7 @@ class _TrendCard extends StatelessWidget {
 }
 
 class _TrendRow extends StatelessWidget {
-  const _TrendRow({
-    required this.label,
-    required this.value,
-  });
+  const _TrendRow({required this.label, required this.value});
 
   final String label;
   final double? value;
@@ -1242,10 +1190,7 @@ class _TrendRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-            ),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
         ),
         Container(
@@ -1254,8 +1199,8 @@ class _TrendRow extends StatelessWidget {
             color: value == null
                 ? const Color(0x33233149)
                 : positive
-                    ? const Color(0x3329D391)
-                    : const Color(0x33FF5A6E),
+                ? const Color(0x3329D391)
+                : const Color(0x33FF5A6E),
             borderRadius: BorderRadius.circular(999),
           ),
           child: Text(
@@ -1264,8 +1209,8 @@ class _TrendRow extends StatelessWidget {
               color: value == null
                   ? Colors.white54
                   : positive
-                      ? const Color(0xFF00E79A)
-                      : const Color(0xFFFF7C7C),
+                  ? const Color(0xFF00E79A)
+                  : const Color(0xFFFF7C7C),
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -1277,9 +1222,7 @@ class _TrendRow extends StatelessWidget {
 }
 
 class _SuggestionsCard extends StatelessWidget {
-  const _SuggestionsCard({
-    required this.suggestions,
-  });
+  const _SuggestionsCard({required this.suggestions});
 
   final List<RestaurantSuggestion> suggestions;
 
@@ -1368,9 +1311,7 @@ class _SuggestionsCard extends StatelessWidget {
 }
 
 class _TopClientsCard extends StatelessWidget {
-  const _TopClientsCard({
-    required this.clients,
-  });
+  const _TopClientsCard({required this.clients});
 
   final List<RestaurantTopClientMetric> clients;
 
@@ -1395,71 +1336,73 @@ class _TopClientsCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ...clients.take(5).map(
-            (client) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A2437),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.person_outline_rounded,
-                      color: Colors.white70,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _displayClientName(client),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+          ...clients
+              .take(5)
+              .map(
+                (client) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A2437),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${client.ordersCount} заказов • ${client.spent} ₸',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
-                          ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.person_outline_rounded,
+                          color: Colors.white70,
+                          size: 18,
                         ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0x332A7BFF),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      client.status,
-                      style: const TextStyle(
-                        color: Color(0xFFB9C8FF),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _displayClientName(client),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${client.ordersCount} заказов • ${client.spent} ₸',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0x332A7BFF),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          client.status,
+                          style: const TextStyle(
+                            color: Color(0xFFB9C8FF),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
         ],
       ),
     );
@@ -1473,9 +1416,7 @@ class _TopClientsCard extends StatelessWidget {
 }
 
 class _RecentOrdersCard extends StatelessWidget {
-  const _RecentOrdersCard({
-    required this.orders,
-  });
+  const _RecentOrdersCard({required this.orders});
 
   final List<RestaurantRecentOrderMetric> orders;
 
@@ -1500,49 +1441,51 @@ class _RecentOrdersCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ...orders.take(5).map(
-            (order) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          order.customerName?.trim().isNotEmpty == true
-                              ? order.customerName!.trim()
-                              : (order.phone?.trim().isNotEmpty == true
-                                  ? order.phone!.trim()
-                                  : 'Клиент'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+          ...orders
+              .take(5)
+              .map(
+                (order) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              order.customerName?.trim().isNotEmpty == true
+                                  ? order.customerName!.trim()
+                                  : (order.phone?.trim().isNotEmpty == true
+                                        ? order.phone!.trim()
+                                        : 'Клиент'),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${order.total} ₸ • ${order.status ?? '—'}',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${order.total} ₸ • ${order.status ?? '—'}',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
-                          ),
+                      ),
+                      Text(
+                        _formatDateTime(order.createdAt),
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    _formatDateTime(order.createdAt),
-                    style: const TextStyle(
-                      color: Colors.white38,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
         ],
       ),
     );

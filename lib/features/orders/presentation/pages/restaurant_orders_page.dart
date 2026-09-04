@@ -167,10 +167,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
               id: orderId,
               reason: rejectionReason ?? '',
             )
-          : await _ordersApi.updateOrderStatus(
-              id: orderId,
-              status: nextStatus,
-            );
+          : await _ordersApi.updateOrderStatus(id: orderId, status: nextStatus);
 
       if (!mounted) return;
 

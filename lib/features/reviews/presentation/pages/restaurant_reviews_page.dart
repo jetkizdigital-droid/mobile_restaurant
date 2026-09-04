@@ -7,10 +7,7 @@ import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 
 class RestaurantReviewsPage extends StatefulWidget {
-  const RestaurantReviewsPage({
-    super.key,
-    required this.restaurantId,
-  });
+  const RestaurantReviewsPage({super.key, required this.restaurantId});
 
   final String restaurantId;
 
@@ -169,8 +166,8 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
                 FilledButton(
                   onPressed: canSave
                       ? () => Navigator.of(
-                            dialogContext,
-                          ).pop(controller.text.trim())
+                          dialogContext,
+                        ).pop(controller.text.trim())
                       : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF489F2A),
@@ -289,23 +286,16 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
         centerTitle: true,
         title: const Text(
           'Отзывы',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
       ),
-      body: SafeArea(
-        child: _buildBody(),
-      ),
+      body: SafeArea(child: _buildBody()),
     );
   }
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_error != null && _items.isEmpty) {
@@ -318,10 +308,7 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
               Text(
                 'Ошибка загрузки отзывов: $_error',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  height: 1.4,
-                ),
+                style: const TextStyle(color: Colors.white70, height: 1.4),
               ),
               const SizedBox(height: 12),
               ElevatedButton(
@@ -387,9 +374,7 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.expand_more_rounded),
-                label: Text(
-                  _isLoadingMore ? 'Загрузка…' : 'Показать ещё',
-                ),
+                label: Text(_isLoadingMore ? 'Загрузка…' : 'Показать ещё'),
               ),
             );
           }
@@ -432,14 +417,9 @@ class _ReviewCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF151F32),
-            Color(0xFF0D1524),
-          ],
+          colors: [Color(0xFF151F32), Color(0xFF0D1524)],
         ),
-        border: Border.all(
-          color: const Color(0xFF22324A),
-        ),
+        border: Border.all(color: const Color(0xFF22324A)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,12 +489,14 @@ class _ReviewCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: review.reactionsSummary.entries.map((entry) {
-                return _ReactionChip(
-                  label: _reactionEmoji(entry.key),
-                  count: entry.value,
-                );
-              }).toList(growable: false),
+              children: review.reactionsSummary.entries
+                  .map((entry) {
+                    return _ReactionChip(
+                      label: _reactionEmoji(entry.key),
+                      count: entry.value,
+                    );
+                  })
+                  .toList(growable: false),
             ),
           ],
           if (review.response != null && review.response!.hasContent) ...[
@@ -573,9 +555,7 @@ class _ReviewCard extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({
-    required this.imageUrl,
-  });
+  const _Avatar({required this.imageUrl});
 
   final String? imageUrl;
 
@@ -592,11 +572,7 @@ class _Avatar extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: absolute == null
-          ? const Icon(
-              Icons.person_rounded,
-              color: Colors.white70,
-              size: 20,
-            )
+          ? const Icon(Icons.person_rounded, color: Colors.white70, size: 20)
           : Image.network(
               absolute,
               fit: BoxFit.cover,
@@ -611,9 +587,7 @@ class _Avatar extends StatelessWidget {
 }
 
 class _ReviewMediaPreview extends StatelessWidget {
-  const _ReviewMediaPreview({
-    required this.media,
-  });
+  const _ReviewMediaPreview({required this.media});
 
   final List<ReviewMedia> media;
 
@@ -703,9 +677,7 @@ class _ReviewMediaPreview extends StatelessWidget {
 }
 
 class _VideoReviewPlayer extends StatefulWidget {
-  const _VideoReviewPlayer({
-    required this.media,
-  });
+  const _VideoReviewPlayer({required this.media});
 
   final ReviewMedia media;
 
@@ -794,7 +766,8 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: AspectRatio(
-              aspectRatio: _controller?.value.aspectRatio == null ||
+              aspectRatio:
+                  _controller?.value.aspectRatio == null ||
                       _controller!.value.aspectRatio <= 0
                   ? (16 / 9)
                   : _controller!.value.aspectRatio,
@@ -828,9 +801,7 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
                   if (_isLoading)
                     Container(
                       color: Colors.black26,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+                      child: const Center(child: CircularProgressIndicator()),
                     ),
                   if (_error != null)
                     Container(
@@ -887,10 +858,7 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
               if (_isReady && _controller != null)
                 Text(
                   _formatDuration(_controller!.value.position),
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
             ],
           ),
@@ -919,9 +887,7 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
 }
 
 class _AudioReviewPlayer extends StatefulWidget {
-  const _AudioReviewPlayer({
-    required this.media,
-  });
+  const _AudioReviewPlayer({required this.media});
 
   final ReviewMedia media;
 
@@ -1065,10 +1031,7 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
               ),
               Text(
                 _formatDuration(_position),
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ],
           ),
@@ -1076,10 +1039,7 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
             const SizedBox(height: 10),
             Text(
               _error!,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ] else ...[
             const SizedBox(height: 10),
@@ -1103,17 +1063,11 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
               children: [
                 Text(
                   _formatDuration(_position),
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                  ),
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
                 Text(
                   _formatDuration(_duration),
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                  ),
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
               ],
             ),
@@ -1151,9 +1105,7 @@ class _ResponseBlock extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x1426A65B),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0x55489F2A),
-        ),
+        border: Border.all(color: const Color(0x55489F2A)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1227,10 +1179,7 @@ class _ResponseBlock extends StatelessWidget {
 }
 
 class _ReactionChip extends StatelessWidget {
-  const _ReactionChip({
-    required this.label,
-    required this.count,
-  });
+  const _ReactionChip({required this.label, required this.count});
 
   final String label;
   final int count;
@@ -1264,10 +1213,7 @@ class _ReactionChip extends StatelessWidget {
 }
 
 class _ImageViewerPage extends StatefulWidget {
-  const _ImageViewerPage({
-    required this.imageUrls,
-    required this.initialIndex,
-  });
+  const _ImageViewerPage({required this.imageUrls, required this.initialIndex});
 
   final List<String> imageUrls;
   final int initialIndex;
@@ -1304,9 +1250,7 @@ class _ImageViewerPageState extends State<_ImageViewerPage> {
         foregroundColor: Colors.white,
         title: Text(
           '${_index + 1} / $total',
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       body: PageView.builder(

@@ -35,12 +35,12 @@ class RestaurantReview {
       text: _toNullableString(json['text']),
       userName: _buildUserName(user),
       userAvatar: _toNullableString(user?['avatarUrl']),
-      media: _toListOfMaps(json['media'])
-          .map(ReviewMedia.fromJson)
-          .toList(growable: false),
-      reactions: _toListOfMaps(json['reactions'])
-          .map(ReviewReaction.fromJson)
-          .toList(growable: false),
+      media: _toListOfMaps(
+        json['media'],
+      ).map(ReviewMedia.fromJson).toList(growable: false),
+      reactions: _toListOfMaps(
+        json['reactions'],
+      ).map(ReviewReaction.fromJson).toList(growable: false),
       reactionsSummary: _toSummaryMap(json['reactionsSummary']),
       response: json['response'] == null
           ? null
@@ -148,12 +148,12 @@ class ReviewResponse {
       id: (json['id'] ?? '').toString(),
       createdByName: RestaurantReview._buildUserName(createdByUser),
       text: _toNullableString(json['text']),
-      media: _toListOfMaps(json['media'])
-          .map(ReviewMedia.fromJson)
-          .toList(growable: false),
-      reactions: _toListOfMaps(json['reactions'])
-          .map(ReviewReaction.fromJson)
-          .toList(growable: false),
+      media: _toListOfMaps(
+        json['media'],
+      ).map(ReviewMedia.fromJson).toList(growable: false),
+      reactions: _toListOfMaps(
+        json['reactions'],
+      ).map(ReviewReaction.fromJson).toList(growable: false),
       reactionsSummary: _toSummaryMap(json['reactionsSummary']),
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()),
     );

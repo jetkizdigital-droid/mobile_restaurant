@@ -10,13 +10,7 @@ import 'package:flutter/material.dart';
 ///   orders / menu / profile / finance / support
 /// - Если меняются названия вкладок, сначала меняем enum здесь,
 ///   потом синхронизируем restaurant_shell_page.dart.
-enum RestaurantBottomBarTab {
-  orders,
-  menu,
-  profile,
-  finance,
-  support,
-}
+enum RestaurantBottomBarTab { orders, menu, profile, finance, support }
 
 class RestaurantBottomBar extends StatelessWidget {
   final RestaurantBottomBarTab currentTab;
@@ -76,9 +70,7 @@ class RestaurantBottomBar extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF111827),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: const Color(0xFF2A3342),
-              ),
+              border: Border.all(color: const Color(0xFF2A3342)),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x33000000),

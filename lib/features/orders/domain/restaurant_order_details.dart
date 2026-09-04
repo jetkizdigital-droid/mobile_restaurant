@@ -205,7 +205,9 @@ class RestaurantOrderDetails {
               Map<String, dynamic>.from(addressValue),
             )
           : null,
-      rawAddressText: addressValue is String ? _toNullableString(addressValue) : null,
+      rawAddressText: addressValue is String
+          ? _toNullableString(addressValue)
+          : null,
 
       courierId: _toNullableString(json['courierId']),
       assignedAt: _toDateTime(json['assignedAt']),
@@ -313,15 +315,19 @@ class RestaurantOrderDetailsAddress {
     return RestaurantOrderDetailsAddress(
       id: RestaurantOrderDetails._toNullableString(json['id']),
       title: RestaurantOrderDetails._toNullableString(json['title']),
-      address: RestaurantOrderDetails._toNullableString(json['address']) ??
+      address:
+          RestaurantOrderDetails._toNullableString(json['address']) ??
           RestaurantOrderDetails._toNullableString(json['addressText']) ??
           RestaurantOrderDetails._toNullableString(json['fullAddress']),
       floor: RestaurantOrderDetails._toNullableString(json['floor']),
-      door: RestaurantOrderDetails._toNullableString(json['door']) ??
+      door:
+          RestaurantOrderDetails._toNullableString(json['door']) ??
           RestaurantOrderDetails._toNullableString(json['apartment']),
       entrance: RestaurantOrderDetails._toNullableString(json['entrance']),
       intercom: RestaurantOrderDetails._toNullableString(json['intercom']),
-      contactPhone: RestaurantOrderDetails._toNullableString(json['contactPhone']),
+      contactPhone: RestaurantOrderDetails._toNullableString(
+        json['contactPhone'],
+      ),
       comment: RestaurantOrderDetails._toNullableString(json['comment']),
     );
   }
@@ -462,9 +468,7 @@ class RestaurantOrderDetailsRestaurant {
     this.address,
   });
 
-  factory RestaurantOrderDetailsRestaurant.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory RestaurantOrderDetailsRestaurant.fromJson(Map<String, dynamic> json) {
     return RestaurantOrderDetailsRestaurant(
       id: RestaurantOrderDetails._toStringOrEmpty(json['id']),
       slug: RestaurantOrderDetails._toNullableString(json['slug']),

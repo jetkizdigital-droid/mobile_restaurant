@@ -3,7 +3,7 @@ import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_metrics_
 
 class RestaurantMetricsApi {
   RestaurantMetricsApi({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient.instance;
+    : _apiClient = apiClient ?? ApiClient.instance;
 
   final ApiClient _apiClient;
 
@@ -37,8 +37,6 @@ class RestaurantMetricsApi {
       throw Exception('Некорректный ответ сервера по статистике');
     }
 
-    return RestaurantMetricsData.fromJson(
-      Map<String, dynamic>.from(response),
-    );
+    return RestaurantMetricsData.fromJson(Map<String, dynamic>.from(response));
   }
 }

@@ -14,8 +14,7 @@ class CreateMenuCategoryPage extends StatefulWidget {
   final int? nextSortOrder;
 
   @override
-  State<CreateMenuCategoryPage> createState() =>
-      _CreateMenuCategoryPageState();
+  State<CreateMenuCategoryPage> createState() => _CreateMenuCategoryPageState();
 }
 
 class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
@@ -303,9 +302,7 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
                 const Padding(
                   padding: EdgeInsets.all(24),
                   child: Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF54B52E),
-                    ),
+                    child: CircularProgressIndicator(color: Color(0xFF54B52E)),
                   ),
                 )
               else if (_categories.isEmpty)
@@ -350,9 +347,7 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
             hintStyle: const TextStyle(color: Color(0xFF6F7D91)),
             filled: true,
             fillColor: const Color(0xFF162035),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
       ],
@@ -398,7 +393,9 @@ class _CategoryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  category.titleKk.isEmpty ? 'Казахское название не указано' : category.titleKk,
+                  category.titleKk.isEmpty
+                      ? 'Казахское название не указано'
+                      : category.titleKk,
                   style: const TextStyle(
                     color: Color(0xFF93A0B4),
                     fontSize: 12,
