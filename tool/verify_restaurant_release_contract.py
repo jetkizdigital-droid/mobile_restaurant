@@ -115,6 +115,16 @@ for relative_path in (
     if '@drawable/ic_launcher_foreground' not in adaptive:
         raise SystemExit(f'Adaptive launcher foreground missing in {relative_path}')
 
+legacy_launcher_pngs = sorted(
+    root.glob('android/app/src/main/res/mipmap-*/ic_launcher.png')
+)
+if legacy_launcher_pngs:
+    names = ', '.join(str(path.relative_to(root)) for path in legacy_launcher_pngs)
+    raise SystemExit(
+        'Legacy density launcher PNGs are forbidden because they can override branding: '
+        + names
+    )
+
 push = (root / 'lib/core/push/restaurant_push_notification_service.dart').read_text(encoding='utf-8')
 for required in (
     "'app': 'restaurant'",
