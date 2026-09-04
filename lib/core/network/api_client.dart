@@ -6,7 +6,9 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import 'package:jetkiz_restaurant/core/config/app_build_info.dart';
 import 'package:jetkiz_restaurant/core/config/app_config.dart';
+import 'package:jetkiz_restaurant/core/device/restaurant_device_identity.dart';
 import '../../features/auth/data/auth_storage.dart';
 
 class ApiClient {
@@ -495,6 +497,14 @@ class ApiClient {
       }
     }
 
+    // Bind auth sessions, refreshes, logout and push registration to the same
+    // app-scoped installation identity. The backend already consumes these
+    // headers when issuing/revoking Restaurant sessions.
+    headers['x-device-id'] = await RestaurantDeviceIdentity.getOrCreate();
+    headers['x-app'] = 'restaurant';
+    headers['x-app-version'] = AppBuildInfo.fullVersion;
+    headers['x-platform'] = _backendPlatformName();
+
     if (_selectedRestaurantId == null ||
         _selectedRestaurantId!.trim().isEmpty) {
       _selectedRestaurantId = await _storage.getSelectedRestaurantId();
@@ -506,6 +516,12 @@ class ApiClient {
     }
 
     return headers;
+  }
+
+  String _backendPlatformName() {
+    if (Platform.isAndroid) return 'ANDROID';
+    if (Platform.isIOS) return 'IOS';
+    return 'UNKNOWN';
   }
 
   Future<http.MultipartFile> _createMultipart(String field, File file) async {
@@ -556,10 +572,10 @@ class ApiClient {
       final response = await _http
           .post(
             uri,
-            headers: const {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
+            headers: await _buildHeaders(
+              authRequired: false,
+              isJson: true,
+            ),
             body: jsonEncode({'refreshToken': refreshToken}),
           )
           .timeout(const Duration(seconds: 10));
