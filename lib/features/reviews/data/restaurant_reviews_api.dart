@@ -11,12 +11,21 @@ class RestaurantReviewsApi {
     int page = 1,
     int limit = 20,
   }) async {
+    final normalizedRestaurantId = restaurantId.trim();
+    if (normalizedRestaurantId.isEmpty) {
+      throw Exception('Не выбран ресторан');
+    }
+
+    // The Restaurant app must use the authenticated private feed. Public
+    // /restaurants/:id/reviews intentionally depends on catalog publication
+    // state (isInApp), while the operational app must retain access to its own
+    // review history when a branch is temporarily unpublished. ApiClient sends
+    // x-restaurant-id, and RestaurantGuard verifies that context server-side.
     final path = Uri(
-      path: '/restaurants/$restaurantId/reviews',
+      path: '/restaurants/me/reviews',
       queryParameters: <String, String>{
         'page': '$page',
         'limit': '$limit',
-        'includeUser': 'true',
       },
     ).toString();
 
