@@ -18,9 +18,8 @@ analyzer:
   exclude:
     - lib_backup_before_encoding_fix/**
   errors:
-    # These three findings are tracked as cleanup items in the production-audit
+    # These findings are tracked as cleanup items in the production-audit
     # branch. They are intentionally downgraded to info so CI can execute tests
     # and a real Android build while still failing on every other warning/error.
-    unawaited_return_in_try_block: info
     unused_element_parameter: info
     unused_field: info
