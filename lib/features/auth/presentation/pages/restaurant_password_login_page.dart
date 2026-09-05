@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/core/session/restaurant_context.dart';
 import 'package:jetkiz_restaurant/core/session/session_manager.dart';
@@ -9,11 +10,11 @@ import 'package:jetkiz_restaurant/features/navigation/presentation/pages/restaur
 class RestaurantPasswordLoginPage extends StatefulWidget {
   const RestaurantPasswordLoginPage({
     super.key,
-    required this.phone,
+    this.initialPhone,
     this.languageCode = 'ru',
   });
 
-  final String phone;
+  final String? initialPhone;
   final String languageCode;
 
   @override
@@ -24,7 +25,9 @@ class RestaurantPasswordLoginPage extends StatefulWidget {
 class _RestaurantPasswordLoginPageState
     extends State<RestaurantPasswordLoginPage> {
   final AuthApi _authApi = AuthApi();
+  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _passwordFocusNode = FocusNode();
 
   bool _loading = false;
   bool _obscurePassword = true;
@@ -33,13 +36,44 @@ class _RestaurantPasswordLoginPageState
   String _t(String ru, String kk) => _isKazakh ? kk : ru;
 
   @override
+  void initState() {
+    super.initState();
+    final raw = widget.initialPhone ?? '';
+    var digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 11 && (digits.startsWith('7') || digits.startsWith('8'))) {
+      digits = digits.substring(1);
+    }
+    if (digits.length > 10) digits = digits.substring(digits.length - 10);
+    _phoneController.text = digits;
+  }
+
+  @override
   void dispose() {
+    _phoneController.dispose();
     _passwordController.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
+  }
+
+  String? _normalizedPhone() {
+    final local = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+    if (local.length != 10) return null;
+    return '+7$local';
   }
 
   Future<void> _submit() async {
     if (_loading) return;
+
+    final phone = _normalizedPhone();
+    if (phone == null) {
+      _showError(
+        _t(
+          'Введите 10 цифр номера после +7',
+          '+7-ден кейін телефон нөмірінің 10 цифрын енгізіңіз',
+        ),
+      );
+      return;
+    }
 
     final password = _passwordController.text;
     if (password.isEmpty) {
@@ -51,7 +85,7 @@ class _RestaurantPasswordLoginPageState
 
     try {
       await _authApi.loginRestaurantWithPassword(
-        phone: widget.phone.trim(),
+        phone: phone,
         password: password,
       );
 
@@ -112,6 +146,33 @@ class _RestaurantPasswordLoginPageState
       );
   }
 
+  InputDecoration _inputDecoration({
+    required String hintText,
+    Widget? prefix,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: const TextStyle(color: Color(0xFF6F7D91)),
+      prefixIcon: prefix,
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: const Color(0xFF101827),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFF2A3950)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFF2A3950)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFF65C044), width: 1.5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -142,17 +203,37 @@ class _RestaurantPasswordLoginPageState
                     Text(
                       _t('Телефон', 'Телефон'),
                       style: const TextStyle(
-                        color: Color(0xFF95A0B3),
-                        fontSize: 12,
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      widget.phone,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: const ValueKey('restaurant_password_phone_field'),
+                      controller: _phoneController,
+                      enabled: !_loading,
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.next,
+                      inputFormatters: const [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
+                      onSubmitted: (_) => _passwordFocusNode.requestFocus(),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _inputDecoration(
+                        hintText: '7000000000',
+                        prefix: const Padding(
+                          padding: EdgeInsets.fromLTRB(14, 14, 4, 14),
+                          child: Text(
+                            '+7',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 22),
@@ -166,25 +247,16 @@ class _RestaurantPasswordLoginPageState
                     ),
                     const SizedBox(height: 8),
                     TextField(
+                      key: const ValueKey('restaurant_password_field'),
                       controller: _passwordController,
+                      focusNode: _passwordFocusNode,
                       enabled: !_loading,
                       obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _submit(),
                       style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
+                      decoration: _inputDecoration(
                         hintText: _t('Введите пароль', 'Құпиясөзді енгізіңіз'),
-                        hintStyle: const TextStyle(color: Color(0xFF6F7D91)),
-                        filled: true,
-                        fillColor: const Color(0xFF101827),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2A3950)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF2A3950)),
-                        ),
                         suffixIcon: IconButton(
                           onPressed: _loading
                               ? null
@@ -205,6 +277,7 @@ class _RestaurantPasswordLoginPageState
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton(
+                        key: const ValueKey('restaurant_password_submit'),
                         onPressed: _loading ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF489F2A),
@@ -233,8 +306,8 @@ class _RestaurantPasswordLoginPageState
                     const SizedBox(height: 14),
                     Text(
                       _t(
-                        'Вход по паролю доступен только для аккаунтов, которым JETKIZ выдал постоянный пароль.',
-                        'Құпиясөзбен кіру JETKIZ тұрақты құпиясөз берген аккаунттар үшін ғана қолжетімді.',
+                        'Вход по паролю доступен для аккаунтов с постоянным паролем JETKIZ.',
+                        'Құпиясөзбен кіру JETKIZ тұрақты құпиясөзі бар аккаунттар үшін қолжетімді.',
                       ),
                       style: const TextStyle(
                         color: Color(0xFF95A0B3),
