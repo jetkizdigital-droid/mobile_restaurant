@@ -1,0 +1,109 @@
+name: Restaurant Auth Input Hotfix
+
+on:
+  push:
+    branches:
+      - release/restaurant-play-readiness
+    paths:
+      - '.github/workflows/restaurant-auth-input-hotfix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/restaurant-play-readiness
+          fetch-depth: 0
+
+      - name: Patch phone input and release guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          auth_path = Path('lib/features/auth/presentation/pages/restaurant_auth_page.dart')
+          auth = auth_path.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r"  String _formatPhone\(String value\) \{.*?^  \}\n\n  String _normalizePhone",
+              re.S | re.M,
+          )
+          replacement = r'''  String _formatPhone(String value) {
+            var digits = value.replaceAll(RegExp(r'\D'), '');
+            final trimmed = value.trimLeft();
+
+            // Keep +7 as a fixed country prefix, while the editable part contains
+            // only the ten local digits. This avoids cursor traps around generated
+            // parentheses and dashes and makes backspace behave normally.
+            if (trimmed.startsWith('+7') && digits.startsWith('7')) {
+              digits = digits.substring(1);
+            } else if (digits.length == 11 &&
+                (digits.startsWith('7') || digits.startsWith('8'))) {
+              digits = digits.substring(1);
+            }
+
+            if (digits.length > 10) {
+              digits = digits.substring(0, 10);
+            }
+
+            return digits.isEmpty ? '+7 ' : '+7 $digits';
+          }
+
+          String _normalizePhone'''
+          auth, count = pattern.subn(replacement, auth, count=1)
+          if count != 1:
+              raise SystemExit('Could not replace _formatPhone contract')
+          auth = auth.replace("hintText: '+7 (___) ___-__-__',", "hintText: '+7 7000000000',")
+          if '+7 (___) ___-__-__' in auth:
+              raise SystemExit('Legacy parenthesized phone hint remains')
+          auth_path.write_text(auth, encoding='utf-8')
+
+          password_path = Path('lib/features/auth/presentation/pages/restaurant_password_login_page.dart')
+          password = password_path.read_text(encoding='utf-8')
+          password = password.replace(
+              'inputFormatters: const [\n                        FilteringTextInputFormatter.digitsOnly,',
+              'inputFormatters: [\n                        FilteringTextInputFormatter.digitsOnly,',
+          )
+          password_path.write_text(password, encoding='utf-8')
+
+          contract_path = Path('tool/verify_restaurant_release_contract.py')
+          contract = contract_path.read_text(encoding='utf-8')
+          old = '''for required in (\n    'Документы и аккаунт',\n    'Запросить удаление аккаунта',\n    '_requestAccountDeletion',\n    '_telegramHosts',\n    '_whatsappHosts',\n    "uri.scheme.toLowerCase() != 'https'",\n    "title: 'Позвонить в JETKIZ'",\n    "title: 'WhatsApp JETKIZ'",\n    "title: 'Telegram JETKIZ'",\n):\n    if required not in support:\n        raise SystemExit(f'Support/release compliance contract missing: {required}')\n'''
+          new = '''for required in (\n    'Документы и аккаунт',\n    'Политика конфиденциальности',\n    'Запросить удаление аккаунта',\n    '_requestAccountDeletion',\n    '_telegramHosts',\n    "uri.scheme.toLowerCase() != 'https'",\n    "title: 'Telegram JETKIZ'",\n):\n    if required not in support:\n        raise SystemExit(f'Support/release compliance contract missing: {required}')\nfor forbidden in (\n    "title: 'Позвонить в JETKIZ'",\n    "title: 'WhatsApp JETKIZ'",\n    '_whatsappHosts',\n    'Как удаляются аккаунт и данные',\n    'Не удалось обновить контакты',\n):\n    if forbidden in support:\n        raise SystemExit(f'Forbidden Restaurant support UI remains: {forbidden}')\n'''
+          if old not in contract:
+              raise SystemExit('Could not find old support release contract')
+          contract = contract.replace(old, new, 1)
+
+          gateway_marker = "if 'requestCode(' in gateway:\n    raise SystemExit('Direct reviewer password-login entry must not depend on OTP request')\n"
+          gateway_new = gateway_marker + "if 'showDialog<' in gateway or 'AlertDialog(' in gateway:\n    raise SystemExit('Password login gateway must not use a transient dialog before navigation')\n"
+          if gateway_marker not in contract:
+              raise SystemExit('Could not find gateway release contract')
+          contract = contract.replace(gateway_marker, gateway_new, 1)
+
+          password_guard = '''\npassword_login = (root / 'lib/features/auth/presentation/pages/restaurant_password_login_page.dart').read_text(\n    encoding='utf-8'\n)\nfor required in (\n    'restaurant_password_phone_field',\n    'restaurant_password_field',\n    'FilteringTextInputFormatter.digitsOnly',\n    'LengthLimitingTextInputFormatter(10)',\n    "return '+7$local';",\n):\n    if required not in password_login:\n        raise SystemExit(f'Password login phone-input contract missing: {required}')\nif '+7 (' in password_login:\n    raise SystemExit('Password login must not use parenthesized phone masking')\n\nauth_page = (root / 'lib/features/auth/presentation/pages/restaurant_auth_page.dart').read_text(\n    encoding='utf-8'\n)\nif '+7 (___)' in auth_page:\n    raise SystemExit('OTP auth screen still exposes the legacy parenthesized phone mask')\n'''
+          anchor = "\napp = (root / 'lib/app/app.dart').read_text(encoding='utf-8')\n"
+          if anchor not in contract:
+              raise SystemExit('Could not locate app contract anchor')
+          contract = contract.replace(anchor, password_guard + anchor, 1)
+          contract_path.write_text(contract, encoding='utf-8')
+          PY
+
+          python3 tool/verify_dart_utf8.py
+          python3 tool/verify_restaurant_release_contract.py
+
+          git config user.name jetkizdigital-droid
+          git config user.email jetkizdigital@gmail.com
+          git add lib/features/auth/presentation/pages/restaurant_auth_page.dart lib/features/auth/presentation/pages/restaurant_password_login_page.dart tool/verify_restaurant_release_contract.py
+          if git diff --cached --quiet; then
+            echo 'No auth hotfix changes required'
+            exit 0
+          fi
+          git commit -m 'fix(auth): remove phone mask cursor trap and harden reviewer flow'
+          git push origin HEAD:release/restaurant-play-readiness
