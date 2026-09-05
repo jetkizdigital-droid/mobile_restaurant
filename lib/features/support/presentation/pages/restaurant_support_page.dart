@@ -16,19 +16,10 @@ class RestaurantSupportPage extends StatefulWidget {
 }
 
 class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
-  static const String _fallbackPhone = '+7 708 681 06 93';
-  static const String _fallbackWhatsapp = 'https://wa.me/77086810693';
   static const String _fallbackTelegram = 'https://t.me/+Bp5uSFWWlBkyYjMy';
-
   static const Set<String> _telegramHosts = <String>{
     't.me',
     'telegram.me',
-  };
-  static const Set<String> _whatsappHosts = <String>{
-    'wa.me',
-    'api.whatsapp.com',
-    'whatsapp.com',
-    'www.whatsapp.com',
   };
 
   final RestaurantNotificationsApi _notificationsApi =
@@ -47,11 +38,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   }
 
   Future<void> _load() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-      });
-    }
+    if (mounted) setState(() => _loading = true);
 
     var bootstrap = RestaurantAppCmsSession.instance.state.value;
     var unreadCount = _unreadCount;
@@ -59,14 +46,14 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     try {
       bootstrap = await RestaurantAppCmsSession.instance.refresh();
     } catch (_) {
-      // Support actions have verified production fallbacks, so a temporary CMS
-      // refresh failure must not make the support screen look broken.
+      // Telegram has a verified production fallback. A temporary CMS problem
+      // must not expose a technical error banner to a restaurant or reviewer.
     }
 
     try {
       unreadCount = await _notificationsApi.getUnreadCount();
     } catch (_) {
-      // Notifications are auxiliary on this screen; keep the last known count.
+      // Keep the last known count; Telegram support remains usable.
     }
 
     if (!mounted) return;
@@ -86,7 +73,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     }
   }
 
-  Uri? _validatedHttpsUrl(String? value, Set<String> allowedHosts) {
+  Uri? _validatedTelegramUrl(String? value) {
     final raw = value?.trim() ?? '';
     if (raw.isEmpty) return null;
 
@@ -94,31 +81,12 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     if (uri == null ||
         uri.scheme.toLowerCase() != 'https' ||
         uri.userInfo.isNotEmpty ||
-        uri.host.trim().isEmpty) {
+        uri.host.trim().isEmpty ||
+        !_telegramHosts.contains(uri.host.toLowerCase())) {
       return null;
     }
 
-    final host = uri.host.toLowerCase();
-    if (!allowedHosts.contains(host)) return null;
-
     return uri;
-  }
-
-  String? _normalizedPhone(String? value) {
-    final raw = value?.trim() ?? '';
-    if (raw.isEmpty) return null;
-
-    final hasPlus = raw.startsWith('+');
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (digits.length < 10 || digits.length > 15) return null;
-
-    return '${hasPlus ? '+' : ''}$digits';
-  }
-
-  Future<void> _callSupport(String value) async {
-    final phone = _normalizedPhone(value);
-    if (phone == null) return;
-    await _open(Uri(scheme: 'tel', path: phone));
   }
 
   Future<void> _requestAccountDeletion() async {
@@ -129,7 +97,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Запросить удаление аккаунта?'),
         content: const Text(
-          'Аккаунт не будет удалён автоматически. JETKIZ получит заявку и свяжется с вами для проверки активных заказов и дальнейших действий.',
+          'Аккаунт не будет удалён автоматически. JETKIZ получит заявку и проверит активные заказы перед удалением.',
         ),
         actions: [
           TextButton(
@@ -146,9 +114,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
 
     if (confirmed != true || !mounted) return;
 
-    setState(() {
-      _requestingDeletion = true;
-    });
+    setState(() => _requestingDeletion = true);
 
     try {
       final response = await _restaurantApi.requestAccountDeletion();
@@ -163,21 +129,20 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
         ..showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '').trim();
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
             content: Text(
-              error.toString().replaceFirst('Exception: ', '').trim(),
+              message.isEmpty
+                  ? 'Не удалось отправить запрос. Повторите позже.'
+                  : message,
             ),
           ),
         );
     } finally {
-      if (mounted) {
-        setState(() {
-          _requestingDeletion = false;
-        });
-      }
+      if (mounted) setState(() => _requestingDeletion = false);
     }
   }
 
@@ -191,13 +156,8 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   @override
   Widget build(BuildContext context) {
     final support = _bootstrap?.support;
-    final phone = _normalizedPhone(support?.phone) ?? _fallbackPhone;
-    final whatsapp =
-        _validatedHttpsUrl(support?.whatsappUrl, _whatsappHosts) ??
-        Uri.parse(_fallbackWhatsapp);
     final telegram =
-        _validatedHttpsUrl(support?.telegramUrl, _telegramHosts) ??
-        Uri.parse(_fallbackTelegram);
+        _validatedTelegramUrl(support?.telegramUrl) ?? Uri.parse(_fallbackTelegram);
 
     return Scaffold(
       backgroundColor: const Color(0xFF09111C),
@@ -228,21 +188,9 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
                 body: support!.emergencyTextRu!.trim(),
               ),
             _SupportAction(
-              icon: Icons.phone_rounded,
-              title: 'Позвонить в JETKIZ',
-              subtitle: phone,
-              onTap: () => _callSupport(phone),
-            ),
-            _SupportAction(
-              icon: Icons.chat_rounded,
-              title: 'WhatsApp JETKIZ',
-              subtitle: 'Открыть чат поддержки в WhatsApp',
-              onTap: () => _open(whatsapp),
-            ),
-            _SupportAction(
               icon: Icons.send_rounded,
               title: 'Telegram JETKIZ',
-              subtitle: 'Открыть канал JETKIZ в Telegram',
+              subtitle: 'Открыть поддержку JETKIZ в Telegram',
               onTap: () => _open(telegram),
             ),
             _SupportAction(
@@ -279,7 +227,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
               title: 'Запросить удаление аккаунта',
               subtitle: _requestingDeletion
                   ? 'Отправляем запрос…'
-                  : 'Отправить официальный запрос в JETKIZ',
+                  : 'Отправить запрос в JETKIZ',
               enabled: !_requestingDeletion,
               onTap: _requestAccountDeletion,
             ),
@@ -430,7 +378,10 @@ class _MessageCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   body,
-                  style: const TextStyle(color: Color(0xFFB7C0CE), height: 1.4),
+                  style: const TextStyle(
+                    color: Color(0xFFB7C0CE),
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),
