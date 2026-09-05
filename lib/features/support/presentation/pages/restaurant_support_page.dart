@@ -16,6 +16,10 @@ class RestaurantSupportPage extends StatefulWidget {
 }
 
 class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
+  static const String _fallbackPhone = '+7 708 681 06 93';
+  static const String _fallbackWhatsapp = 'https://wa.me/77086810693';
+  static const String _fallbackTelegram = 'https://t.me/+Bp5uSFWWlBkyYjMy';
+
   static const Set<String> _telegramHosts = <String>{
     't.me',
     'telegram.me',
@@ -35,7 +39,6 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   int _unreadCount = 0;
   bool _loading = true;
   bool _requestingDeletion = false;
-  String? _error;
 
   @override
   void initState() {
@@ -44,31 +47,34 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final results = await Future.wait<dynamic>([
-        RestaurantAppCmsSession.instance.refresh(),
-        _notificationsApi.getUnreadCount(),
-      ]);
-
-      if (!mounted) return;
+    if (mounted) {
       setState(() {
-        _bootstrap = results[0] as RestaurantAppBootstrap;
-        _unreadCount = results[1] as int;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _bootstrap = RestaurantAppCmsSession.instance.state.value;
-        _error = error.toString().replaceFirst('Exception: ', '').trim();
-        _loading = false;
+        _loading = true;
       });
     }
+
+    var bootstrap = RestaurantAppCmsSession.instance.state.value;
+    var unreadCount = _unreadCount;
+
+    try {
+      bootstrap = await RestaurantAppCmsSession.instance.refresh();
+    } catch (_) {
+      // Support actions have verified production fallbacks, so a temporary CMS
+      // refresh failure must not make the support screen look broken.
+    }
+
+    try {
+      unreadCount = await _notificationsApi.getUnreadCount();
+    } catch (_) {
+      // Notifications are auxiliary on this screen; keep the last known count.
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _bootstrap = bootstrap;
+      _unreadCount = unreadCount;
+      _loading = false;
+    });
   }
 
   Future<void> _open(Uri uri) async {
@@ -109,35 +115,9 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     return '${hasPlus ? '+' : ''}$digits';
   }
 
-  Future<void> _openValidatedSupportUrl({
-    required String? value,
-    required Set<String> allowedHosts,
-    required String unavailableMessage,
-  }) async {
-    final uri = _validatedHttpsUrl(value, allowedHosts);
-    if (uri == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(unavailableMessage)),
-        );
-      }
-      return;
-    }
-
-    await _open(uri);
-  }
-
-  Future<void> _callSupport(String? value) async {
+  Future<void> _callSupport(String value) async {
     final phone = _normalizedPhone(value);
-    if (phone == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Телефон поддержки пока недоступен')),
-        );
-      }
-      return;
-    }
-
+    if (phone == null) return;
     await _open(Uri(scheme: 'tel', path: phone));
   }
 
@@ -211,15 +191,13 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   @override
   Widget build(BuildContext context) {
     final support = _bootstrap?.support;
-    final phone = _normalizedPhone(support?.phone);
-    final whatsapp = _validatedHttpsUrl(
-      support?.whatsappUrl,
-      _whatsappHosts,
-    );
-    final telegram = _validatedHttpsUrl(
-      support?.telegramUrl,
-      _telegramHosts,
-    );
+    final phone = _normalizedPhone(support?.phone) ?? _fallbackPhone;
+    final whatsapp =
+        _validatedHttpsUrl(support?.whatsappUrl, _whatsappHosts) ??
+        Uri.parse(_fallbackWhatsapp);
+    final telegram =
+        _validatedHttpsUrl(support?.telegramUrl, _telegramHosts) ??
+        Uri.parse(_fallbackTelegram);
 
     return Scaffold(
       backgroundColor: const Color(0xFF09111C),
@@ -243,12 +221,6 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
                 padding: EdgeInsets.symmetric(vertical: 18),
                 child: LinearProgressIndicator(color: Color(0xFF489F2A)),
               ),
-            if (_error != null)
-              _MessageCard(
-                icon: Icons.cloud_off_rounded,
-                title: 'Не удалось обновить контакты',
-                body: _error!,
-              ),
             if ((support?.emergencyTextRu ?? '').trim().isNotEmpty)
               _MessageCard(
                 icon: Icons.campaign_rounded,
@@ -258,35 +230,20 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
             _SupportAction(
               icon: Icons.phone_rounded,
               title: 'Позвонить в JETKIZ',
-              subtitle: phone ?? 'Телефон поддержки временно недоступен',
-              enabled: phone != null,
-              onTap: () => _callSupport(support?.phone),
+              subtitle: phone,
+              onTap: () => _callSupport(phone),
             ),
             _SupportAction(
               icon: Icons.chat_rounded,
               title: 'WhatsApp JETKIZ',
-              subtitle: whatsapp != null
-                  ? 'Открыть чат поддержки в WhatsApp'
-                  : 'WhatsApp поддержки временно недоступен',
-              enabled: whatsapp != null,
-              onTap: () => _openValidatedSupportUrl(
-                value: support?.whatsappUrl,
-                allowedHosts: _whatsappHosts,
-                unavailableMessage: 'WhatsApp поддержки пока недоступен',
-              ),
+              subtitle: 'Открыть чат поддержки в WhatsApp',
+              onTap: () => _open(whatsapp),
             ),
             _SupportAction(
               icon: Icons.send_rounded,
               title: 'Telegram JETKIZ',
-              subtitle: telegram != null
-                  ? 'Открыть поддержку в Telegram'
-                  : 'Telegram поддержки временно недоступен',
-              enabled: telegram != null,
-              onTap: () => _openValidatedSupportUrl(
-                value: support?.telegramUrl,
-                allowedHosts: _telegramHosts,
-                unavailableMessage: 'Telegram поддержки пока недоступен',
-              ),
+              subtitle: 'Открыть канал JETKIZ в Telegram',
+              onTap: () => _open(telegram),
             ),
             _SupportAction(
               icon: Icons.notifications_rounded,
@@ -315,15 +272,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
             _SupportAction(
               icon: Icons.privacy_tip_outlined,
               title: 'Политика конфиденциальности',
-              subtitle: 'Открыть jetkiz.asia/privacy',
               onTap: () => _open(Uri.parse('https://jetkiz.asia/privacy')),
-            ),
-            _SupportAction(
-              icon: Icons.info_outline_rounded,
-              title: 'Как удаляются аккаунт и данные',
-              subtitle: 'Открыть jetkiz.asia/account-deletion',
-              onTap: () =>
-                  _open(Uri.parse('https://jetkiz.asia/account-deletion')),
             ),
             _SupportAction(
               icon: Icons.delete_outline_rounded,
@@ -355,19 +304,21 @@ class _SupportAction extends StatelessWidget {
   const _SupportAction({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.onTap,
+    this.subtitle,
     this.enabled = true,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final VoidCallback onTap;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
+    final resolvedSubtitle = subtitle?.trim() ?? '';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -411,16 +362,18 @@ class _SupportAction extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: enabled
-                              ? const Color(0xFF9EABBE)
-                              : const Color(0xFF526070),
-                          fontSize: 12,
+                      if (resolvedSubtitle.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          resolvedSubtitle,
+                          style: TextStyle(
+                            color: enabled
+                                ? const Color(0xFF9EABBE)
+                                : const Color(0xFF526070),
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
