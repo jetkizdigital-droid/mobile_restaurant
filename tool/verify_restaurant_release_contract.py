@@ -178,7 +178,6 @@ if 'JETKIZ Restaurant · 1.0.0' in support:
 for required in (
     'Документы и аккаунт',
     'Запросить удаление аккаунта',
-    'https://jetkiz.asia/account-deletion',
     '_requestAccountDeletion',
     '_telegramHosts',
     '_whatsappHosts',
