@@ -51,12 +51,14 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     RestaurantBottomBarTab.finance,
     RestaurantBottomBarTab.support,
   ];
+  final Set<RestaurantBottomBarTab> _visitedTabs = <RestaurantBottomBarTab>{};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentTab = widget.initialTab;
+    _visitedTabs.add(_currentTab);
     _sessionExpiredSubscription = ApiClient.instance.sessionExpiredEvents
         .listen((_) => _openLogin());
     unawaited(RestaurantPushNotificationService.instance.markNavigationReady());
@@ -277,6 +279,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
     setState(() {
       _currentTab = tab;
+      _visitedTabs.add(tab);
     });
 
     // The profile screen can change the active branch. Reload both restaurant
@@ -284,8 +287,8 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     unawaited(_loadRestaurant());
   }
 
-  Widget _buildPage() {
-    switch (_currentTab) {
+  Widget _buildPageForTab(RestaurantBottomBarTab tab) {
+    switch (tab) {
       case RestaurantBottomBarTab.orders:
         return const orders_page.RestaurantOrdersPage(hideBottomBar: true);
       case RestaurantBottomBarTab.menu:
@@ -309,6 +312,22 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         }
         return const RestaurantSupportPage();
     }
+  }
+
+  Widget _buildTabStack() {
+    return IndexedStack(
+      index: _tabOrder.indexOf(_currentTab),
+      children: _tabOrder.map((tab) {
+        if (!_visitedTabs.contains(tab)) {
+          return const SizedBox.shrink();
+        }
+
+        return TickerMode(
+          enabled: tab == _currentTab,
+          child: _buildPageForTab(tab),
+        );
+      }).toList(growable: false),
+    );
   }
 
   @override
@@ -348,7 +367,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
                     ? _resubmitForReview
                     : null,
               ),
-            Expanded(child: _buildPage()),
+            Expanded(child: _buildTabStack()),
           ],
         ),
       ),
