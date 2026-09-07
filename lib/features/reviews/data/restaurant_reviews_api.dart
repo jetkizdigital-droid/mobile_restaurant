@@ -11,12 +11,20 @@ class RestaurantReviewsApi {
     int page = 1,
     int limit = 20,
   }) async {
+    final normalizedRestaurantId = restaurantId.trim();
+    if (normalizedRestaurantId.isEmpty) {
+      throw Exception('Не удалось определить ресторан');
+    }
+
+    if (_apiClient.selectedRestaurantId != normalizedRestaurantId) {
+      await _apiClient.setSelectedRestaurantId(normalizedRestaurantId);
+    }
+
     final path = Uri(
-      path: '/restaurants/$restaurantId/reviews',
+      path: '/restaurants/me/reviews',
       queryParameters: <String, String>{
         'page': '$page',
         'limit': '$limit',
-        'includeUser': 'true',
       },
     ).toString();
 
