@@ -15,14 +15,14 @@ class RestaurantOrdersPage extends StatefulWidget {
 }
 
 class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver {
   final RestaurantOrdersApi _ordersApi = RestaurantOrdersApi();
 
-  late final AnimationController _blinkController;
   StreamSubscription<void>? _pushRefreshSubscription;
   Timer? _pollTimer;
 
   bool _isLoading = true;
+  bool _tabActive = true;
   String? _error;
   int _loadGeneration = 0;
 
@@ -50,22 +50,36 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _blinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-
     _pushRefreshSubscription = RestaurantPushNotificationService
         .instance
         .ordersRefreshEvents
-        .listen((_) => unawaited(_loadOrders(silent: true)));
+        .listen((_) {
+          if (_tabActive) {
+            unawaited(_loadOrders(silent: true));
+          }
+        });
 
     _pollTimer = Timer.periodic(
       const Duration(seconds: 20),
-      (_) => unawaited(_loadOrders(silent: true)),
+      (_) {
+        if (_tabActive) {
+          unawaited(_loadOrders(silent: true));
+        }
+      },
     );
 
     unawaited(_loadOrders());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final wasActive = _tabActive;
+    _tabActive = TickerMode.of(context);
+
+    if (!wasActive && _tabActive && !_isLoading) {
+      unawaited(_loadOrders(silent: true));
+    }
   }
 
   @override
@@ -73,13 +87,12 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _pushRefreshSubscription?.cancel();
-    _blinkController.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && _tabActive) {
       unawaited(_loadOrders(silent: true));
     }
   }
@@ -147,7 +160,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     setState(() {
       _selectedStatus = status;
     });
-    unawaited(_loadOrders());
+    unawaited(_loadOrders(silent: true));
   }
 
   Future<void> _openOrder(Map<String, dynamic> order) async {
@@ -613,7 +626,6 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
           previewItems: _previewItems(order),
           isUpdating: _isUpdating(order),
           actions: _actionsFor(order),
-          blinkController: _blinkController,
           onTap: () => _openOrder(order),
           onActionTap: (action) {
             if (action.nextStatus == 'REJECTED') {
@@ -781,7 +793,6 @@ class _RestaurantOrderCard extends StatelessWidget {
     required this.previewItems,
     required this.isUpdating,
     required this.actions,
-    required this.blinkController,
     required this.onTap,
     required this.onActionTap,
   });
@@ -802,7 +813,6 @@ class _RestaurantOrderCard extends StatelessWidget {
   final List<_OrderPreviewItem> previewItems;
   final bool isUpdating;
   final List<_OrderAction> actions;
-  final AnimationController blinkController;
   final VoidCallback onTap;
   final ValueChanged<_OrderAction> onActionTap;
 
@@ -814,143 +824,137 @@ class _RestaurantOrderCard extends StatelessWidget {
       isIssuedPickup: isIssuedPickup,
     );
     final isNew = status == 'CREATED';
+    final borderAlpha = isNew ? 0.58 : 0.16;
 
-    return AnimatedBuilder(
-      animation: blinkController,
-      builder: (context, child) {
-        final borderAlpha = isNew
-            ? 0.35 + (blinkController.value * 0.35)
-            : 0.16;
-
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827),
             borderRadius: BorderRadius.circular(20),
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF111827),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: meta.textColor.withValues(alpha: borderAlpha),
-                  width: isNew ? 1.4 : 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.26),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
+            border: Border.all(
+              color: meta.textColor.withValues(alpha: borderAlpha),
+              width: isNew ? 1.4 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.26),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _StatusBadge(meta: meta),
+                  if (isPickup) ...[
+                    const SizedBox(width: 8),
+                    const _PickupBadge(),
+                  ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      orderNumber == '—' ? 'Заказ' : 'Заказ $orderNumber',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$total ₸',
+                    style: const TextStyle(
+                      color: Color(0xFF86EFAC),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ],
               ),
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              _StatusBadge(meta: meta),
-              if (isPickup) ...[const SizedBox(width: 8), const _PickupBadge()],
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  orderNumber == '—' ? 'Заказ' : 'Заказ $orderNumber',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              Text(
-                '$total ₸',
-                style: const TextStyle(
-                  color: Color(0xFF86EFAC),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _SmallInfoBlock(
-                  label: 'Клиент',
-                  value: clientName,
-                  icon: Icons.person_outline_rounded,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SmallInfoBlock(
-                  label: isPickup ? 'Получение' : 'Курьер',
-                  value: courierName,
-                  icon: isPickup
-                      ? Icons.storefront_rounded
-                      : Icons.delivery_dining_rounded,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _SmallInfoBlock(
-                  label: 'Создан',
-                  value: createdAt,
-                  icon: Icons.schedule_rounded,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SmallInfoBlock(
-                  label: 'Обещано к',
-                  value: promisedAt,
-                  icon: Icons.timer_outlined,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _MoneyRow(
-            subtotal: subtotal,
-            deliveryFee: deliveryFee,
-            total: total,
-            paymentStatus: paymentStatus,
-            isPickup: isPickup,
-          ),
-          const SizedBox(height: 12),
-          _ItemsPreview(itemsCount: itemsCount, items: previewItems),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Row(
-              children: actions.map((action) {
-                return Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      right: action == actions.last ? 0 : 8,
-                    ),
-                    child: _OrderActionButton(
-                      action: action,
-                      isLoading: isUpdating,
-                      onTap: () => onActionTap(action),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _SmallInfoBlock(
+                      label: 'Клиент',
+                      value: clientName,
+                      icon: Icons.person_outline_rounded,
                     ),
                   ),
-                );
-              }).toList(),
-            ),
-          ],
-        ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _SmallInfoBlock(
+                      label: isPickup ? 'Получение' : 'Курьер',
+                      value: courierName,
+                      icon: isPickup
+                          ? Icons.storefront_rounded
+                          : Icons.delivery_dining_rounded,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _SmallInfoBlock(
+                      label: 'Создан',
+                      value: createdAt,
+                      icon: Icons.schedule_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _SmallInfoBlock(
+                      label: 'Обещано к',
+                      value: promisedAt,
+                      icon: Icons.timer_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _MoneyRow(
+                subtotal: subtotal,
+                deliveryFee: deliveryFee,
+                total: total,
+                paymentStatus: paymentStatus,
+                isPickup: isPickup,
+              ),
+              const SizedBox(height: 12),
+              _ItemsPreview(itemsCount: itemsCount, items: previewItems),
+              if (actions.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: actions.map((action) {
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          right: action == actions.last ? 0 : 8,
+                        ),
+                        child: _OrderActionButton(
+                          action: action,
+                          isLoading: isUpdating,
+                          onTap: () => onActionTap(action),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
