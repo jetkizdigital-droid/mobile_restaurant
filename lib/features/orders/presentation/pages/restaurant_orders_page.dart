@@ -15,14 +15,16 @@ class RestaurantOrdersPage extends StatefulWidget {
 }
 
 class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
-    with SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final RestaurantOrdersApi _ordersApi = RestaurantOrdersApi();
 
   late final AnimationController _blinkController;
   StreamSubscription<void>? _pushRefreshSubscription;
+  Timer? _pollTimer;
 
   bool _isLoading = true;
   String? _error;
+  int _loadGeneration = 0;
 
   List<Map<String, dynamic>> _allOrders = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _visibleOrders = <Map<String, dynamic>>[];
@@ -46,6 +48,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _blinkController = AnimationController(
       vsync: this,
@@ -55,21 +58,38 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     _pushRefreshSubscription = RestaurantPushNotificationService
         .instance
         .ordersRefreshEvents
-        .listen((_) => unawaited(_loadOrders()));
+        .listen((_) => unawaited(_loadOrders(silent: true)));
 
-    _loadOrders();
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => unawaited(_loadOrders(silent: true)),
+    );
+
+    unawaited(_loadOrders());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
     _pushRefreshSubscription?.cancel();
     _blinkController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadOrders() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadOrders(silent: true));
+    }
+  }
+
+  Future<void> _loadOrders({bool silent = false}) async {
+    final generation = ++_loadGeneration;
+    final shouldShowLoader = !silent || _allOrders.isEmpty;
+
     try {
-      if (mounted) {
+      if (mounted && shouldShowLoader) {
         setState(() {
           _isLoading = true;
           _error = null;
@@ -80,15 +100,20 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
         status: _selectedStatus == 'ALL' ? null : _selectedStatus,
       );
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _allOrders = result;
         _applyFilter();
         _isLoading = false;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
+
+      if (silent && _allOrders.isNotEmpty) {
+        return;
+      }
 
       setState(() {
         _error = _cleanError(e);
@@ -98,7 +123,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   }
 
   Future<void> _refresh() async {
-    await _loadOrders();
+    await _loadOrders(silent: true);
   }
 
   String _cleanError(Object error) {
@@ -140,7 +165,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     );
 
     if (!mounted) return;
-    await _loadOrders();
+    await _loadOrders(silent: true);
   }
 
   Future<void> _changeStatus(
