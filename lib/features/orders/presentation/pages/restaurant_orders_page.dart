@@ -22,6 +22,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   Timer? _pollTimer;
 
   bool _isLoading = true;
+  bool _hasLoadedSuccessfully = false;
   bool _tabActive = true;
   String? _error;
   int _loadGeneration = 0;
@@ -98,8 +99,10 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   }
 
   Future<void> _loadOrders({bool silent = false}) async {
+    if (silent && _isLoading && !_hasLoadedSuccessfully) return;
+
     final generation = ++_loadGeneration;
-    final shouldShowLoader = !silent || _allOrders.isEmpty;
+    final shouldShowLoader = !_hasLoadedSuccessfully && !silent;
 
     try {
       if (mounted && shouldShowLoader) {
@@ -118,13 +121,14 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
       setState(() {
         _allOrders = result;
         _applyFilter();
+        _hasLoadedSuccessfully = true;
         _isLoading = false;
         _error = null;
       });
     } catch (e) {
       if (!mounted || generation != _loadGeneration) return;
 
-      if (silent && _allOrders.isNotEmpty) {
+      if (silent && _hasLoadedSuccessfully) {
         return;
       }
 
