@@ -36,11 +36,15 @@ class RestaurantShellPage extends StatefulWidget {
 
 class _RestaurantShellPageState extends State<RestaurantShellPage>
     with WidgetsBindingObserver {
+  static const Duration _runtimeRefreshTtl = Duration(seconds: 30);
+
   late RestaurantBottomBarTab _currentTab;
   StreamSubscription<void>? _sessionExpiredSubscription;
   bool _openingLogin = false;
   bool _isUpdatingAcceptingOrders = false;
   bool _isLoggingOut = false;
+  int _restaurantLoadGeneration = 0;
+  DateTime? _lastRestaurantLoadAt;
   RestaurantProfileData? _restaurantProfile;
   RestaurantAppBootstrap? _cmsBootstrap;
 
@@ -62,7 +66,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     _sessionExpiredSubscription = ApiClient.instance.sessionExpiredEvents
         .listen((_) => _openLogin());
     unawaited(RestaurantPushNotificationService.instance.markNavigationReady());
-    unawaited(_loadRestaurant());
+    unawaited(_loadRestaurant(force: true));
   }
 
   @override
@@ -83,7 +87,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         requestPermissionIfNeeded: false,
       ),
     );
-    unawaited(_loadRestaurant());
+    unawaited(_loadRestaurant(force: true));
   }
 
   void _openLogin() {
@@ -139,11 +143,18 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     ).push(MaterialPageRoute(builder: (_) => const RestaurantSupportPage()));
   }
 
-  Future<void> _loadRestaurant() async {
+  Future<void> _loadRestaurant({bool force = false}) async {
+    final lastLoadedAt = _lastRestaurantLoadAt;
+    if (!force &&
+        lastLoadedAt != null &&
+        DateTime.now().difference(lastLoadedAt) < _runtimeRefreshTtl) {
+      return;
+    }
+
+    final generation = ++_restaurantLoadGeneration;
     try {
       final restaurantApi = RestaurantApi(ApiClient.instance);
       final restaurant = await restaurantApi.getMyRestaurant();
-      RestaurantSession.restaurant = restaurant;
 
       RestaurantAppBootstrap? bootstrap;
       try {
@@ -154,12 +165,15 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         bootstrap = RestaurantAppCmsSession.instance.state.value;
       }
 
-      if (!mounted) return;
+      if (!mounted || generation != _restaurantLoadGeneration) return;
+      RestaurantSession.restaurant = restaurant;
+      _lastRestaurantLoadAt = DateTime.now();
       setState(() {
         _restaurantProfile = restaurant;
         _cmsBootstrap = bootstrap;
       });
     } catch (e, st) {
+      if (generation != _restaurantLoadGeneration) return;
       debugPrint('ERROR loading restaurant: $e');
       debugPrintStack(stackTrace: st);
     }
@@ -194,6 +208,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       }
 
       if (!mounted) return;
+      _lastRestaurantLoadAt = DateTime.now();
       setState(() {
         _restaurantProfile = restaurant;
         _cmsBootstrap = bootstrap;
@@ -242,6 +257,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       RestaurantSession.restaurant = restaurant;
 
       if (!mounted) return;
+      _lastRestaurantLoadAt = DateTime.now();
       setState(() {
         _restaurantProfile = restaurant;
       });
@@ -277,14 +293,20 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     if (_currentTab == tab) return;
     if (!_tabOrder.contains(tab)) return;
 
+    final previousTab = _currentTab;
     setState(() {
       _currentTab = tab;
       _visitedTabs.add(tab);
     });
 
-    // The profile screen can change the active branch. Reload both restaurant
-    // runtime state and server-controlled app configuration on tab changes.
-    unawaited(_loadRestaurant());
+    // The profile can change the active branch, so transitions into/out of it
+    // always refresh. Other tab switches only refresh when the runtime/CMS
+    // snapshot is stale, avoiding a network round-trip and shell rebuild on
+    // every navigation tap.
+    final branchMayHaveChanged =
+        previousTab == RestaurantBottomBarTab.profile ||
+        tab == RestaurantBottomBarTab.profile;
+    unawaited(_loadRestaurant(force: branchMayHaveChanged));
   }
 
   Widget _buildPageForTab(RestaurantBottomBarTab tab) {
@@ -339,7 +361,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       return _MaintenanceGate(
         title: maintenance?.titleRu,
         body: maintenance?.bodyRu,
-        onRetry: _loadRestaurant,
+        onRetry: () => _loadRestaurant(force: true),
         onSupport: _openSupportDuringMaintenance,
         onLogout: _logout,
         isLoggingOut: _isLoggingOut,
