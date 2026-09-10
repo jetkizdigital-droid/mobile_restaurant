@@ -15,6 +15,9 @@ class RestaurantSupportPage extends StatefulWidget {
 }
 
 class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
+  static final Uri _jetkizSupportTelegram =
+      Uri.parse('https://t.me/+Bp5uSFWWlBkyYjMy');
+
   final RestaurantNotificationsApi _notificationsApi =
       RestaurantNotificationsApi();
   late final RestaurantApi _restaurantApi = RestaurantApi(ApiClient.instance);
@@ -23,7 +26,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   int _unreadCount = 0;
   bool _loading = true;
   bool _requestingDeletion = false;
-  String? _error;
+  bool _loadFailed = false;
 
   @override
   void initState() {
@@ -34,7 +37,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   Future<void> _load() async {
     setState(() {
       _loading = true;
-      _error = null;
+      _loadFailed = false;
     });
 
     try {
@@ -49,11 +52,11 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
         _unreadCount = results[1] as int;
         _loading = false;
       });
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _bootstrap = RestaurantAppCmsSession.instance.state.value;
-        _error = error.toString().replaceFirst('Exception: ', '').trim();
+        _loadFailed = true;
         _loading = false;
       });
     }
@@ -66,20 +69,6 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
         const SnackBar(content: Text('Не удалось открыть ссылку')),
       );
     }
-  }
-
-  Future<void> _openRawUrl(String? value) async {
-    final url = value?.trim() ?? '';
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Telegram поддержки пока недоступен')),
-        );
-      }
-      return;
-    }
-    await _open(uri);
   }
 
   Future<void> _requestAccountDeletion() async {
@@ -122,14 +111,14 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-              error.toString().replaceFirst('Exception: ', '').trim(),
+              'Не удалось отправить запрос. Проверьте интернет-соединение и попробуйте ещё раз.',
             ),
           ),
         );
@@ -175,11 +164,12 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
                 padding: EdgeInsets.symmetric(vertical: 18),
                 child: LinearProgressIndicator(color: Color(0xFF489F2A)),
               ),
-            if (_error != null)
-              _MessageCard(
-                icon: Icons.cloud_off_rounded,
-                title: 'Не удалось обновить контакты',
-                body: _error!,
+            if (_loadFailed)
+              const _MessageCard(
+                icon: Icons.wifi_off_rounded,
+                title: 'Не удалось обновить информацию',
+                body:
+                    'Часть данных может быть устаревшей. Проверьте интернет-соединение и потяните экран вниз, чтобы повторить.',
               ),
             if ((support?.emergencyTextRu ?? '').trim().isNotEmpty)
               _MessageCard(
@@ -190,9 +180,8 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
             _SupportAction(
               icon: Icons.send_rounded,
               title: 'Поддержка JETKIZ',
-              subtitle: 'Открыть группу поддержки в Telegram',
-              enabled: (support?.telegramUrl ?? '').trim().isNotEmpty,
-              onTap: () => _openRawUrl(support?.telegramUrl),
+              subtitle: 'Написать команде JETKIZ в Telegram',
+              onTap: () => _open(_jetkizSupportTelegram),
             ),
             _SupportAction(
               icon: Icons.notifications_rounded,
@@ -221,13 +210,13 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
             _SupportAction(
               icon: Icons.privacy_tip_outlined,
               title: 'Политика конфиденциальности',
-              subtitle: 'Открыть jetkiz.asia/privacy',
+              subtitle: 'Открыть документ',
               onTap: () => _open(Uri.parse('https://jetkiz.asia/privacy')),
             ),
             _SupportAction(
               icon: Icons.info_outline_rounded,
-              title: 'Как удаляются аккаунт и данные',
-              subtitle: 'Открыть jetkiz.asia/account-deletion',
+              title: 'Удаление аккаунта и данных',
+              subtitle: 'Как проходит удаление аккаунта',
               onTap: () =>
                   _open(Uri.parse('https://jetkiz.asia/account-deletion')),
             ),
@@ -236,7 +225,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
               title: 'Запросить удаление аккаунта',
               subtitle: _requestingDeletion
                   ? 'Отправляем запрос…'
-                  : 'Отправить официальный запрос в JETKIZ',
+                  : 'Отправить запрос команде JETKIZ',
               enabled: !_requestingDeletion,
               onTap: _requestAccountDeletion,
             ),
