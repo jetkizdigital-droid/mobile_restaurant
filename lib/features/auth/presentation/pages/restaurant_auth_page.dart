@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'restaurant_sms_page.dart';
 
 enum RestaurantAuthTab { login, register }
-
-enum RestaurantAuthLanguage { ru, kk }
 
 class RestaurantAuthPage extends StatefulWidget {
   const RestaurantAuthPage({super.key});
@@ -17,27 +16,17 @@ class RestaurantAuthPage extends StatefulWidget {
 
 class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
   final AuthApi _authApi = AuthApi();
-
-  RestaurantAuthTab _tab = RestaurantAuthTab.login;
-  RestaurantAuthLanguage _language = RestaurantAuthLanguage.ru;
-  bool _isLoading = false;
-  bool _registrationConsentAccepted = false;
-
   final TextEditingController _loginPhoneController = TextEditingController();
-  final TextEditingController _registerPhoneController =
-      TextEditingController();
+  final TextEditingController _registerPhoneController = TextEditingController();
   final TextEditingController _nameRuController = TextEditingController();
   final TextEditingController _nameKkController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
 
+  RestaurantAuthTab _tab = RestaurantAuthTab.login;
+  bool _isLoading = false;
+  bool _registrationConsentAccepted = false;
   TimeOfDay _openTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _closeTime = const TimeOfDay(hour: 22, minute: 0);
-
-  bool get _isKazakh => _language == RestaurantAuthLanguage.kk;
-
-  String _t(String ru, String kk) => _isKazakh ? kk : ru;
-
-  String get _languageCode => _isKazakh ? 'kk' : 'ru';
 
   @override
   void dispose() {
@@ -51,71 +40,50 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
 
   String _formatPhone(String value) {
     final digits = value.replaceAll(RegExp(r'\D'), '');
-
-    String normalized = digits;
+    var normalized = digits;
     if (normalized.startsWith('8')) {
       normalized = '7${normalized.substring(1)}';
     }
     if (!normalized.startsWith('7') && normalized.isNotEmpty) {
       normalized = '7$normalized';
     }
-    if (normalized.length > 11) {
-      normalized = normalized.substring(0, 11);
-    }
+    if (normalized.length > 11) normalized = normalized.substring(0, 11);
 
     final buffer = StringBuffer('+7');
     if (normalized.length > 1) {
-      buffer.write(
-        ' (${normalized.substring(1, normalized.length >= 4 ? 4 : normalized.length)}',
-      );
+      final end = normalized.length >= 4 ? 4 : normalized.length;
+      buffer.write(' (${normalized.substring(1, end)}');
     }
-    if (normalized.length >= 4) {
-      buffer.write(')');
-    }
+    if (normalized.length >= 4) buffer.write(')');
     if (normalized.length >= 5) {
-      buffer.write(
-        ' ${normalized.substring(4, normalized.length >= 7 ? 7 : normalized.length)}',
-      );
+      final end = normalized.length >= 7 ? 7 : normalized.length;
+      buffer.write(' ${normalized.substring(4, end)}');
     }
     if (normalized.length >= 8) {
-      buffer.write(
-        '-${normalized.substring(7, normalized.length >= 9 ? 9 : normalized.length)}',
-      );
+      final end = normalized.length >= 9 ? 9 : normalized.length;
+      buffer.write('-${normalized.substring(7, end)}');
     }
     if (normalized.length >= 10) {
-      buffer.write(
-        '-${normalized.substring(9, normalized.length >= 11 ? 11 : normalized.length)}',
-      );
+      final end = normalized.length >= 11 ? 11 : normalized.length;
+      buffer.write('-${normalized.substring(9, end)}');
     }
-
     return buffer.toString();
   }
 
   String _normalizePhone(String value) {
     final digits = value.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) {
-      return '';
-    }
-
-    String normalized = digits;
-
+    if (digits.isEmpty) return '';
+    var normalized = digits;
     if (normalized.startsWith('8')) {
       normalized = '7${normalized.substring(1)}';
     }
-
-    if (!normalized.startsWith('7')) {
-      normalized = '7$normalized';
-    }
-
-    if (normalized.length > 11) {
-      normalized = normalized.substring(0, 11);
-    }
-
+    if (!normalized.startsWith('7')) normalized = '7$normalized';
+    if (normalized.length > 11) normalized = normalized.substring(0, 11);
     return '+$normalized';
   }
 
   bool _isValidPhone(String value) {
-    return _normalizePhone(value).replaceAll('+', '').length == 11;
+    return RegExp(r'^\+7\d{10}$').hasMatch(_normalizePhone(value));
   }
 
   String _formatTime(TimeOfDay time) {
@@ -132,47 +100,57 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     );
   }
 
-  Future<void> _pickTime(bool isOpen) async {
-    final initial = isOpen ? _openTime : _closeTime;
+  String _safeError(Object error, String ru, String kk) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dio') ||
+        lower.contains('socket') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http')) {
+      return context.tr(ru, kk);
+    }
+    return raw;
+  }
 
+  Future<void> _pickTime(bool opening) async {
     final picked = await showTimePicker(
       context: context,
-      initialTime: initial,
-      helpText: _t('Выберите время', 'Уақытты таңдаңыз'),
-      cancelText: _t('Отмена', 'Бас тарту'),
-      confirmText: _t('Готово', 'Дайын'),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF489F2A),
-              surface: Color(0xFF121826),
-              onPrimary: Colors.white,
-              onSurface: Colors.white,
-            ),
+      initialTime: opening ? _openTime : _closeTime,
+      helpText: context.tr('Выберите время', 'Уақытты таңдаңыз'),
+      cancelText: context.tr('Отмена', 'Бас тарту'),
+      confirmText: context.tr('Готово', 'Дайын'),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFF489F2A),
+            surface: Color(0xFF121826),
+            onPrimary: Colors.white,
+            onSurface: Colors.white,
           ),
-          child: child!,
-        );
-      },
+        ),
+        child: child!,
+      ),
     );
-
-    if (picked != null) {
-      setState(() {
-        if (isOpen) {
-          _openTime = picked;
-        } else {
-          _closeTime = picked;
-        }
-      });
-    }
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (opening) {
+        _openTime = picked;
+      } else {
+        _closeTime = picked;
+      }
+    });
   }
 
   Future<void> _submitLogin() async {
     final phone = _loginPhoneController.text.trim();
-
     if (!_isValidPhone(phone)) {
       _showError(
-        _t(
+        context.tr(
           'Введите корректный номер телефона',
           'Телефон нөмірін дұрыс енгізіңіз',
         ),
@@ -181,39 +159,31 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     }
 
     setState(() => _isLoading = true);
-
     try {
       final normalizedPhone = _normalizePhone(phone);
-
-      try {
-        await _authApi.requestCode(phone: normalizedPhone);
-      } catch (e) {
-        if (!mounted) return;
-        final message = e.toString().replaceFirst('Exception: ', '').trim();
-        _showError(
-          message.isEmpty
-              ? _t('Не удалось отправить код', 'Код жіберілмеді')
-              : message,
-        );
-        return;
-      }
-
+      await _authApi.requestCode(phone: normalizedPhone);
       if (!mounted) return;
-
-      Navigator.of(context).push(
-        MaterialPageRoute(
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
           builder: (_) => RestaurantSmsPage(
             phone: normalizedPhone,
             isNewUser: false,
             registerData: null,
-            languageCode: _languageCode,
+            languageCode: AppLocaleController.instance.languageCode,
           ),
         ),
       );
+    } catch (error) {
+      if (!mounted) return;
+      _showError(
+        _safeError(
+          error,
+          'Не удалось отправить код. Проверьте интернет и повторите.',
+          'Кодты жіберу мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -222,32 +192,28 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     final nameRu = _nameRuController.text.trim();
     final nameKk = _nameKkController.text.trim();
     final address = _addressController.text.trim();
-    final workingHoursFrom = _formatTime(_openTime);
-    final workingHoursTo = _formatTime(_closeTime);
 
     if (!_isValidPhone(phone)) {
       _showError(
-        _t(
+        context.tr(
           'Введите корректный номер телефона',
           'Телефон нөмірін дұрыс енгізіңіз',
         ),
       );
       return;
     }
-
     if (nameRu.isEmpty || nameKk.isEmpty || address.isEmpty) {
       _showError(
-        _t(
+        context.tr(
           'Заполните все обязательные поля',
           'Барлық міндетті өрістерді толтырыңыз',
         ),
       );
       return;
     }
-
     if (!_registrationConsentAccepted) {
       _showError(
-        _t(
+        context.tr(
           'Подтвердите согласие с политикой конфиденциальности и обработкой персональных данных',
           'Құпиялылық саясатымен және дербес деректерді өңдеумен келісуді растаңыз',
         ),
@@ -256,59 +222,57 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     }
 
     setState(() => _isLoading = true);
-
     try {
       final normalizedPhone = _normalizePhone(phone);
-
-      try {
-        await _authApi.requestCode(phone: normalizedPhone);
-      } catch (e) {
-        if (!mounted) return;
-        final message = e.toString().replaceFirst('Exception: ', '').trim();
-        _showError(
-          message.isEmpty
-              ? _t('Не удалось отправить код', 'Код жіберілмеді')
-              : message,
-        );
-        return;
-      }
-
+      await _authApi.requestCode(phone: normalizedPhone);
       if (!mounted) return;
-
-      Navigator.of(context).push(
-        MaterialPageRoute(
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
           builder: (_) => RestaurantSmsPage(
             phone: normalizedPhone,
             isNewUser: true,
-            languageCode: _languageCode,
+            languageCode: AppLocaleController.instance.languageCode,
             registerData: {
               'nameRu': nameRu,
               'nameKk': nameKk,
               'address': address,
-              'workingHoursFrom': workingHoursFrom,
-              'workingHoursTo': workingHoursTo,
+              'workingHoursFrom': _formatTime(_openTime),
+              'workingHoursTo': _formatTime(_closeTime),
             },
           ),
         ),
       );
+    } catch (error) {
+      if (!mounted) return;
+      _showError(
+        _safeError(
+          error,
+          'Не удалось отправить код. Проверьте интернет и повторите.',
+          'Кодты жіберу мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _openExternalDocument(String url) async {
-    final uri = Uri.parse(url);
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final opened = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
     if (!opened && mounted) {
       _showError(
-        _t('Не удалось открыть документ', 'Құжатты ашу мүмкін болмады'),
+        context.tr(
+          'Не удалось открыть документ',
+          'Құжатты ашу мүмкін болмады',
+        ),
       );
     }
   }
 
   void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -321,12 +285,6 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
 
   @override
   Widget build(BuildContext context) {
-    const backgroundTop = Color(0xFF0E1A2C);
-    const backgroundBottom = Color(0xFF08101C);
-    const panelColor = Color(0xFF121B2C);
-    const borderColor = Color(0xFF22324A);
-    const textMuted = Color(0xFF95A0B3);
-
     return Scaffold(
       backgroundColor: const Color(0xFF09111C),
       body: Container(
@@ -334,7 +292,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [backgroundTop, Color(0xFF0B1524), backgroundBottom],
+            colors: [Color(0xFF0E1A2C), Color(0xFF0B1524), Color(0xFF08101C)],
           ),
         ),
         child: SafeArea(
@@ -348,11 +306,8 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: _LanguageSwitcher(
-                        language: _language,
-                        onChanged: (language) {
-                          if (_language == language) return;
-                          setState(() => _language = language);
-                        },
+                        kazakh: context.isKazakh,
+                        onToggle: AppLocaleController.instance.toggle,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -368,7 +323,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                         'jetkiz',
                         style: TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                           fontStyle: FontStyle.italic,
                           fontSize: 18,
                         ),
@@ -376,72 +331,37 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Jetkiz',
+                      'JETKIZ Restaurant',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 28,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _t(
+                      context.tr(
                         'Доступ к кабинету ресторана',
                         'Мейрамхана кабинетіне кіру',
                       ),
-                      style: const TextStyle(color: textMuted, fontSize: 13),
+                      style: const TextStyle(
+                        color: Color(0xFF95A0B3),
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: panelColor.withValues(alpha: 0.88),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: borderColor),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _AuthTabButton(
-                              title: _t('Вход', 'Кіру'),
-                              isActive: _tab == RestaurantAuthTab.login,
-                              onTap: () {
-                                setState(() {
-                                  _tab = RestaurantAuthTab.login;
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _AuthTabButton(
-                              title: _t('Регистрация', 'Тіркелу'),
-                              isActive: _tab == RestaurantAuthTab.register,
-                              onTap: () {
-                                setState(() {
-                                  _tab = RestaurantAuthTab.register;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
+                    _AuthTabs(
+                      tab: _tab,
+                      onChanged: (tab) => setState(() => _tab = tab),
                     ),
                     const SizedBox(height: 18),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: panelColor.withValues(alpha: 0.92),
+                        color: const Color(0xFF121B2C),
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: borderColor),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x22000000),
-                            blurRadius: 18,
-                            offset: Offset(0, 8),
-                          ),
-                        ],
+                        border: Border.all(color: const Color(0xFF22324A)),
                       ),
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 220),
@@ -466,20 +386,20 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _t('С возвращением', 'Қайта қош келдіңіз'),
+          context.tr('С возвращением', 'Қайта қош келдіңіз'),
           style: const TextStyle(
             color: Colors.white,
             fontSize: 22,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          _t('Введите номер телефона', 'Телефон нөмірін енгізіңіз'),
+          context.tr('Введите номер телефона', 'Телефон нөмірін енгізіңіз'),
           style: const TextStyle(color: Color(0xFF95A0B3), fontSize: 13),
         ),
         const SizedBox(height: 22),
-        _FieldLabel(_t('Телефон', 'Телефон')),
+        _FieldLabel(context.tr('Телефон', 'Телефон')),
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _loginPhoneController,
@@ -491,8 +411,8 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         const SizedBox(height: 18),
         _GreenButton(
           text: _isLoading
-              ? _t('Отправка...', 'Жіберілуде...')
-              : _t('Получить код', 'Код алу'),
+              ? context.tr('Отправка...', 'Жіберілуде...')
+              : context.tr('Получить код', 'Код алу'),
           onPressed: _isLoading ? null : _submitLogin,
         ),
       ],
@@ -505,61 +425,53 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _t('Регистрация ресторана', 'Мейрамхананы тіркеу'),
+          context.tr('Регистрация ресторана', 'Мейрамхананы тіркеу'),
           style: const TextStyle(
             color: Colors.white,
             fontSize: 22,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          _t('Заполните данные ресторана', 'Мейрамхана деректерін толтырыңыз'),
+          context.tr(
+            'Заполните данные ресторана',
+            'Мейрамхана деректерін толтырыңыз',
+          ),
           style: const TextStyle(color: Color(0xFF95A0B3), fontSize: 13),
         ),
         const SizedBox(height: 18),
-        _FieldLabel(_t('Телефон', 'Телефон')),
+        _FieldLabel(context.tr('Телефон', 'Телефон')),
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _registerPhoneController,
           hintText: '+7 (___) ___-__-__',
           keyboardType: TextInputType.phone,
           prefixIcon: Icons.phone_outlined,
-          onChanged: (value) =>
-              _onPhoneChanged(_registerPhoneController, value),
+          onChanged: (value) => _onPhoneChanged(_registerPhoneController, value),
         ),
         const SizedBox(height: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _FieldLabel(_t('Название на русском', 'Орысша атауы')),
-            const SizedBox(height: 8),
-            _DarkTextField(
-              controller: _nameRuController,
-              hintText: _t('Название ресторана', 'Мейрамхана атауы'),
-              prefixIcon: Icons.storefront_outlined,
-            ),
-          ],
+        _FieldLabel(context.tr('Название на русском', 'Орысша атауы')),
+        const SizedBox(height: 8),
+        _DarkTextField(
+          controller: _nameRuController,
+          hintText: context.tr('Название ресторана', 'Мейрамхана атауы'),
+          prefixIcon: Icons.storefront_outlined,
         ),
         const SizedBox(height: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _FieldLabel(_t('Название на казахском', 'Қазақша атауы')),
-            const SizedBox(height: 8),
-            _DarkTextField(
-              controller: _nameKkController,
-              hintText: _t('Название ресторана', 'Мейрамхана атауы'),
-              prefixIcon: Icons.storefront_outlined,
-            ),
-          ],
+        _FieldLabel(context.tr('Название на казахском', 'Қазақша атауы')),
+        const SizedBox(height: 8),
+        _DarkTextField(
+          controller: _nameKkController,
+          hintText: context.tr('Название ресторана', 'Мейрамхана атауы'),
+          prefixIcon: Icons.storefront_outlined,
         ),
         const SizedBox(height: 14),
-        _FieldLabel(_t('Адрес', 'Мекенжай')),
+        _FieldLabel(context.tr('Адрес', 'Мекенжай')),
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _addressController,
-          hintText: _t('Город, улица, дом', 'Қала, көше, үй'),
+          hintText: context.tr('Город, улица, дом', 'Қала, көше, үй'),
           prefixIcon: Icons.location_on_outlined,
         ),
         const SizedBox(height: 14),
@@ -569,7 +481,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _FieldLabel(_t('Открытие', 'Ашылуы')),
+                  _FieldLabel(context.tr('Открытие', 'Ашылуы')),
                   const SizedBox(height: 8),
                   _TimeField(
                     text: _formatTime(_openTime),
@@ -583,7 +495,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _FieldLabel(_t('Закрытие', 'Жабылуы')),
+                  _FieldLabel(context.tr('Закрытие', 'Жабылуы')),
                   const SizedBox(height: 8),
                   _TimeField(
                     text: _formatTime(_closeTime),
@@ -604,11 +516,9 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
               side: const BorderSide(color: Color(0xFF6F7D91)),
               onChanged: _isLoading
                   ? null
-                  : (value) {
-                      setState(() {
-                        _registrationConsentAccepted = value ?? false;
-                      });
-                    },
+                  : (value) => setState(
+                        () => _registrationConsentAccepted = value ?? false,
+                      ),
             ),
             const SizedBox(width: 4),
             Expanded(
@@ -618,7 +528,7 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(
-                      _t(
+                      context.tr(
                         'Регистрируясь, вы соглашаетесь с правилами обработки данных JETKIZ.',
                         'Тіркелу арқылы JETKIZ деректерді өңдеу ережелерімен келісесіз.',
                       ),
@@ -631,48 +541,23 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
                   ),
                   Wrap(
                     spacing: 10,
-                    runSpacing: 0,
                     children: [
-                      TextButton(
+                      _DocumentButton(
+                        label: context.tr(
+                          'Политика конфиденциальности',
+                          'Құпиялылық саясаты',
+                        ),
                         onPressed: () => _openExternalDocument(
                           'https://jetkiz.asia/privacy',
                         ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          foregroundColor: const Color(0xFF65C044),
-                        ),
-                        child: Text(
-                          _t(
-                            'Политика конфиденциальности',
-                            'Құпиялылық саясаты',
-                          ),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
                       ),
-                      TextButton(
+                      _DocumentButton(
+                        label: context.tr(
+                          'Согласие на обработку данных',
+                          'Деректерді өңдеуге келісім',
+                        ),
                         onPressed: () => _openExternalDocument(
                           'https://jetkiz.asia/consent',
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          foregroundColor: const Color(0xFF65C044),
-                        ),
-                        child: Text(
-                          _t(
-                            'Согласие на обработку данных',
-                            'Деректерді өңдеуге келісім',
-                          ),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
                         ),
                       ),
                     ],
@@ -685,8 +570,8 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         const SizedBox(height: 18),
         _GreenButton(
           text: _isLoading
-              ? _t('Отправка...', 'Жіберілуде...')
-              : _t('Продолжить', 'Жалғастыру'),
+              ? context.tr('Отправка...', 'Жіберілуде...')
+              : context.tr('Продолжить', 'Жалғастыру'),
           onPressed: _isLoading ? null : _submitRegister,
         ),
       ],
@@ -695,33 +580,57 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
 }
 
 class _LanguageSwitcher extends StatelessWidget {
-  const _LanguageSwitcher({required this.language, required this.onChanged});
+  const _LanguageSwitcher({required this.kazakh, required this.onToggle});
 
-  final RestaurantAuthLanguage language;
-  final ValueChanged<RestaurantAuthLanguage> onChanged;
+  final bool kazakh;
+  final Future<void> Function() onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onToggle,
+      child: Text(
+        kazakh ? 'RU' : 'ҚАЗ',
+        style: const TextStyle(
+          color: Color(0xFF65C044),
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthTabs extends StatelessWidget {
+  const _AuthTabs({required this.tab, required this.onChanged});
+
+  final RestaurantAuthTab tab;
+  final ValueChanged<RestaurantAuthTab> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: const Color(0xFF121B2C),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFF22324A)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          _LanguageButton(
-            label: 'RU',
-            selected: language == RestaurantAuthLanguage.ru,
-            onTap: () => onChanged(RestaurantAuthLanguage.ru),
+          Expanded(
+            child: _AuthTabButton(
+              title: context.tr('Вход', 'Кіру'),
+              active: tab == RestaurantAuthTab.login,
+              onTap: () => onChanged(RestaurantAuthTab.login),
+            ),
           ),
-          const SizedBox(width: 4),
-          _LanguageButton(
-            label: 'ҚАЗ',
-            selected: language == RestaurantAuthLanguage.kk,
-            onTap: () => onChanged(RestaurantAuthLanguage.kk),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _AuthTabButton(
+              title: context.tr('Регистрация', 'Тіркелу'),
+              active: tab == RestaurantAuthTab.register,
+              onTap: () => onChanged(RestaurantAuthTab.register),
+            ),
           ),
         ],
       ),
@@ -729,52 +638,16 @@ class _LanguageSwitcher extends StatelessWidget {
   }
 }
 
-class _LanguageButton extends StatelessWidget {
-  const _LanguageButton({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF489F2A) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : const Color(0xFF95A0B3),
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _AuthTabButton extends StatelessWidget {
-  final String title;
-  final bool isActive;
-  final VoidCallback onTap;
-
   const _AuthTabButton({
     required this.title,
-    required this.isActive,
+    required this.active,
     required this.onTap,
   });
+
+  final String title;
+  final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -785,16 +658,15 @@ class _AuthTabButton extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         height: 46,
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF489F2A) : Colors.transparent,
+          color: active ? const Color(0xFF489F2A) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
         ),
         alignment: Alignment.center,
         child: Text(
           title,
           style: TextStyle(
-            color: isActive ? Colors.white : const Color(0xFF95A0B3),
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
+            color: active ? Colors.white : const Color(0xFF95A0B3),
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -803,9 +675,8 @@ class _AuthTabButton extends StatelessWidget {
 }
 
 class _FieldLabel extends StatelessWidget {
-  final String text;
-
   const _FieldLabel(this.text);
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -814,19 +685,13 @@ class _FieldLabel extends StatelessWidget {
       style: const TextStyle(
         color: Colors.white,
         fontSize: 13,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
 }
 
 class _DarkTextField extends StatelessWidget {
-  final TextEditingController controller;
-  final String hintText;
-  final IconData prefixIcon;
-  final TextInputType? keyboardType;
-  final ValueChanged<String>? onChanged;
-
   const _DarkTextField({
     required this.controller,
     required this.hintText,
@@ -834,6 +699,12 @@ class _DarkTextField extends StatelessWidget {
     this.keyboardType,
     this.onChanged,
   });
+
+  final TextEditingController controller;
+  final String hintText;
+  final IconData prefixIcon;
+  final TextInputType? keyboardType;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -852,12 +723,8 @@ class _DarkTextField extends StatelessWidget {
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hintText,
-          hintStyle: const TextStyle(color: Color(0xFF6F7D91), fontSize: 14),
-          prefixIcon: Icon(
-            prefixIcon,
-            color: const Color(0xFF8E9AAF),
-            size: 20,
-          ),
+          hintStyle: const TextStyle(color: Color(0xFF6F7D91)),
+          prefixIcon: Icon(prefixIcon, color: const Color(0xFF8E9AAF)),
           contentPadding: const EdgeInsets.symmetric(vertical: 15),
         ),
       ),
@@ -866,10 +733,10 @@ class _DarkTextField extends StatelessWidget {
 }
 
 class _TimeField extends StatelessWidget {
+  const _TimeField({required this.text, required this.onTap});
+
   final String text;
   final VoidCallback onTap;
-
-  const _TimeField({required this.text, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -893,10 +760,7 @@ class _TimeField extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-              ),
+              child: Text(text, style: const TextStyle(color: Colors.white)),
             ),
             const Icon(Icons.keyboard_arrow_down, color: Color(0xFF8E9AAF)),
           ],
@@ -906,11 +770,35 @@ class _TimeField extends StatelessWidget {
   }
 }
 
+class _DocumentButton extends StatelessWidget {
+  const _DocumentButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: const Color(0xFF65C044),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
 class _GreenButton extends StatelessWidget {
+  const _GreenButton({required this.text, required this.onPressed});
+
   final String text;
   final VoidCallback? onPressed;
-
-  const _GreenButton({required this.text, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -921,9 +809,8 @@ class _GreenButton extends StatelessWidget {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF489F2A),
-          disabledBackgroundColor: const Color(
-            0xFF489F2A,
-          ).withValues(alpha: 0.6),
+          disabledBackgroundColor:
+              const Color(0xFF489F2A).withValues(alpha: 0.6),
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -932,7 +819,7 @@ class _GreenButton extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
         ),
       ),
     );
