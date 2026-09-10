@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
@@ -34,8 +35,7 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
       });
     }
 
-    final bool hasSession = await _storage.hasSession();
-
+    final hasSession = await _storage.hasSession();
     if (!hasSession) {
       _openLogin();
       return;
@@ -51,12 +51,36 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
         _openLogin();
         return;
       }
-      _showRetry(error.message);
+      _showRetry(_safeError(error.message));
     } catch (_) {
-      _showRetry('Не удалось проверить вход. Проверьте интернет и повторите.');
+      _showRetry(_fallbackError());
     } finally {
       if (mounted) setState(() => _isRetrying = false);
     }
+  }
+
+  String _fallbackError() {
+    return context.tr(
+      'Не удалось проверить вход. Проверьте интернет и повторите.',
+      'Кіруді тексеру мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
+    );
+  }
+
+  String _safeError(String message) {
+    final raw = message.trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dio') ||
+        lower.contains('socket') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http')) {
+      return _fallbackError();
+    }
+    return raw;
   }
 
   void _showRetry(String message) {
@@ -66,7 +90,6 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
 
   void _openLogin() {
     if (!mounted) return;
-
     Navigator.of(context).pushReplacement(
       AppPageRoute<void>(page: const RestaurantAccessChoicePage()),
     );
@@ -74,7 +97,6 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
 
   void _openShell() {
     if (!mounted) return;
-
     Navigator.of(context).pushReplacement(
       AppPageRoute<void>(page: const RestaurantShellPage()),
     );
@@ -100,7 +122,7 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: _isRetrying ? null : _bootstrap,
-                      child: const Text('Повторить'),
+                      child: Text(context.tr('Повторить', 'Қайталау')),
                     ),
                   ],
                 ),
