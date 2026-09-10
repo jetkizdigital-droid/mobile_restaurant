@@ -21,8 +21,7 @@ import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_
 import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
 import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_data.dart';
 import 'package:jetkiz_restaurant/features/restaurant/presentation/widgets/restaurant_operational_banner.dart';
-import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart'
-    as profile_page;
+import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_profile_access_page.dart';
 import 'package:jetkiz_restaurant/features/support/presentation/pages/restaurant_support_page.dart';
 
 class RestaurantShellPage extends StatefulWidget {
@@ -74,14 +73,14 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       return _managerTabs;
     }
 
-    // Fail closed while /auth/me is unresolved. A STAFF/unknown session can
-    // work with orders but cannot expose finance/profile/menu controls.
     return _staffTabs;
   }
 
   bool get _canManageRestaurant =>
       _restaurantAccessRole == _roleOwner ||
       _restaurantAccessRole == _roleManager;
+
+  bool get _isOwner => _restaurantAccessRole == _roleOwner;
 
   @override
   void initState() {
@@ -95,9 +94,6 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       (_) => _refreshActiveOrders(),
     );
     unawaited(RestaurantPushNotificationService.instance.markNavigationReady());
-    // The push service can initialize before login and therefore legitimately
-    // skip token registration. Retry immediately after the authenticated shell
-    // appears and request notification permission on the first login.
     unawaited(_registerPushAfterLogin());
     unawaited(_loadRestaurant());
   }
@@ -165,16 +161,11 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       try {
         await RestaurantPushNotificationService.instance
             .unregisterCurrentToken();
-      } catch (_) {
-        // Logout must remain available even when push/backend is degraded.
-      }
+      } catch (_) {}
 
       try {
         await AuthApi().logout();
-      } catch (_) {
-        // Local session cleanup is authoritative for the device during
-        // maintenance or network failure.
-      }
+      } catch (_) {}
 
       await AuthStorage().clearTokens();
       ApiClient.instance.clearSelectedRestaurantId();
@@ -429,8 +420,6 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       }
     });
 
-    // The profile screen can change the active branch. Reload both restaurant
-    // runtime state and server-controlled app configuration on tab changes.
     unawaited(_loadRestaurant());
   }
 
@@ -451,7 +440,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       case RestaurantBottomBarTab.menu:
         return const RestaurantMenuPage();
       case RestaurantBottomBarTab.profile:
-        return const profile_page.RestaurantProfilePage(hideBottomBar: true);
+        return RestaurantProfileAccessPage(isOwner: _isOwner);
       case RestaurantBottomBarTab.finance:
         if (_cmsBootstrap?.featureEnabled('FINANCE_VIEW_ENABLED') == false) {
           return _FeatureUnavailable(
