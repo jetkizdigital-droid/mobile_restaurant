@@ -16,16 +16,18 @@ class RestaurantNotificationsApi {
     ).toString();
     final response = await _apiClient.get(path);
     if (response is! Map) {
-      throw Exception('Некорректный ответ сервера по уведомлениям');
+      throw Exception('Не удалось загрузить уведомления.');
     }
 
     final json = Map<String, dynamic>.from(response);
     final items = json['items'] is List
         ? (json['items'] as List)
             .whereType<Map>()
-            .map((item) => RestaurantNotification.fromJson(
-                  Map<String, dynamic>.from(item),
-                ))
+            .map(
+              (item) => RestaurantNotification.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            )
             .toList(growable: false)
         : const <RestaurantNotification>[];
 
