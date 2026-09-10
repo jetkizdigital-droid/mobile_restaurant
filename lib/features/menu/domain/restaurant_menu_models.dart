@@ -8,21 +8,28 @@ class RestaurantMenuData {
   });
 
   factory RestaurantMenuData.fromJson(Map<String, dynamic> json) {
+    final rawCategories = json['categories'];
+    final rawItems = json['items'];
+
+    if (rawCategories is! List || rawItems is! List) {
+      throw const FormatException('Invalid restaurant menu payload');
+    }
+
     return RestaurantMenuData(
-      categories: ((json['categories'] as List?) ?? const [])
+      categories: rawCategories
           .map(
             (e) => RestaurantMenuCategory.fromJson(
-              Map<String, dynamic>.from(e as Map),
+              _requiredMap(e, 'category'),
             ),
           )
-          .toList(),
-      items: ((json['items'] as List?) ?? const [])
+          .toList(growable: false),
+      items: rawItems
           .map(
             (e) => RestaurantMenuItem.fromJson(
-              Map<String, dynamic>.from(e as Map),
+              _requiredMap(e, 'product'),
             ),
           )
-          .toList(),
+          .toList(growable: false),
     );
   }
 }
@@ -43,14 +50,18 @@ class RestaurantMenuCategory {
   String get title => titleRu.trim().isNotEmpty ? titleRu.trim() : titleKk.trim();
 
   factory RestaurantMenuCategory.fromJson(Map<String, dynamic> json) {
-    final ru = (json['titleRu'] ?? json['title'] ?? '').toString();
-    final kk = (json['titleKk'] ?? '').toString();
+    final id = _requiredString(json['id'], 'category.id');
+    final ru = _optionalString(json['titleRu'] ?? json['title']) ?? '';
+    final kk = _optionalString(json['titleKk']) ?? '';
+    if (ru.isEmpty && kk.isEmpty) {
+      throw const FormatException('Invalid category title');
+    }
 
     return RestaurantMenuCategory(
-      id: json['id']?.toString() ?? '',
+      id: id,
       titleRu: ru,
       titleKk: kk,
-      sortOrder: _toInt(json['sortOrder']),
+      sortOrder: _optionalInt(json['sortOrder']) ?? 0,
     );
   }
 }
@@ -85,33 +96,57 @@ class RestaurantMenuItem {
   });
 
   factory RestaurantMenuItem.fromJson(Map<String, dynamic> json) {
+    final id = _requiredString(json['id'], 'product.id');
+    final titleRu = _optionalString(json['titleRu']) ?? '';
+    final titleKk = _optionalString(json['titleKk']) ?? '';
+    if (titleRu.isEmpty && titleKk.isEmpty) {
+      throw const FormatException('Invalid product title');
+    }
+
+    final price = _requiredPositiveInt(json['price'], 'product.price');
+    final isAvailable = _requiredBool(json['isAvailable'], 'product.isAvailable');
+    final isDrink = _requiredBool(json['isDrink'], 'product.isDrink');
+
+    String categoryId = '';
+    if (json.containsKey('categoryId')) {
+      categoryId = _optionalString(json['categoryId']) ?? '';
+    } else {
+      final category = json['category'];
+      if (category is Map) {
+        categoryId = _optionalString(category['id']) ?? '';
+      } else {
+        throw const FormatException('Missing product.categoryId');
+      }
+    }
+
+    final rawImages = json['images'];
+    if (rawImages != null && rawImages is! List) {
+      throw const FormatException('Invalid product.images');
+    }
+
     return RestaurantMenuItem(
-      id: json['id']?.toString() ?? '',
-      titleRu: (json['titleRu'] ?? '').toString(),
-      titleKk: (json['titleKk'] ?? '').toString(),
-      price: (json['price'] as num?)?.toInt() ?? 0,
-      isAvailable: json['isAvailable'] == null
-          ? true
-          : json['isAvailable'] == true,
-      categoryId: json['categoryId']?.toString() ??
-          json['category']?['id']?.toString() ??
-          '',
-      imageUrl: json['imageUrl']?.toString(),
-      description: _nullableString(json['description']),
-      weight: _nullableString(
+      id: id,
+      titleRu: titleRu,
+      titleKk: titleKk,
+      price: price,
+      isAvailable: isAvailable,
+      categoryId: categoryId,
+      imageUrl: _optionalString(json['imageUrl']),
+      description: _optionalString(json['description']),
+      weight: _optionalString(
         json['weight'] ?? json['weightText'] ?? json['portion'],
       ),
-      composition: _nullableString(
+      composition: _optionalString(
         json['composition'] ?? json['ingredients'],
       ),
-      isDrink: json['isDrink'] == true,
-      images: ((json['images'] as List?) ?? const [])
+      isDrink: isDrink,
+      images: (rawImages as List? ?? const <dynamic>[])
           .map(
             (e) => RestaurantMenuImage.fromJson(
-              Map<String, dynamic>.from(e as Map),
+              _requiredMap(e, 'product.image'),
             ),
           )
-          .toList(),
+          .toList(growable: false),
     );
   }
 
@@ -144,13 +179,6 @@ class RestaurantMenuItem {
       images: images ?? this.images,
     );
   }
-
-  static String? _nullableString(dynamic value) {
-    if (value == null) return null;
-    final text = value.toString().trim();
-    if (text.isEmpty) return null;
-    return text;
-  }
 }
 
 class RestaurantMenuImage {
@@ -166,15 +194,50 @@ class RestaurantMenuImage {
 
   factory RestaurantMenuImage.fromJson(Map<String, dynamic> json) {
     return RestaurantMenuImage(
-      id: json['id']?.toString() ?? '',
-      url: json['url']?.toString() ?? '',
-      isMain: json['isMain'] == true,
+      id: _requiredString(json['id'], 'product.image.id'),
+      url: _requiredString(json['url'], 'product.image.url'),
+      isMain: _requiredBool(json['isMain'], 'product.image.isMain'),
     );
   }
 }
 
-int _toInt(dynamic value) {
+Map<String, dynamic> _requiredMap(dynamic value, String field) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  throw FormatException('Invalid $field');
+}
+
+String _requiredString(dynamic value, String field) {
+  final text = _optionalString(value);
+  if (text == null) throw FormatException('Missing $field');
+  return text;
+}
+
+String? _optionalString(dynamic value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  if (text.isEmpty || text.toLowerCase() == 'null') return null;
+  return text;
+}
+
+int _requiredPositiveInt(dynamic value, String field) {
+  final parsed = _optionalInt(value);
+  if (parsed == null || parsed <= 0) {
+    throw FormatException('Invalid $field');
+  }
+  return parsed;
+}
+
+int? _optionalInt(dynamic value) {
   if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '') ?? 0;
+  if (value is num && value.isFinite && value == value.roundToDouble()) {
+    return value.toInt();
+  }
+  final text = _optionalString(value);
+  return text == null ? null : int.tryParse(text);
+}
+
+bool _requiredBool(dynamic value, String field) {
+  if (value is bool) return value;
+  throw FormatException('Invalid $field');
 }
