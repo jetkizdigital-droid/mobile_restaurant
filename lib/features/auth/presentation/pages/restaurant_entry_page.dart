@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
-import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
+import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_access_choice_page.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/pages/restaurant_shell_page.dart';
-import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 
 class RestaurantEntryPage extends StatefulWidget {
   const RestaurantEntryPage({super.key});
@@ -53,7 +53,7 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
       }
       _showRetry(error.message);
     } catch (_) {
-      _showRetry('Не удалось проверить сессию');
+      _showRetry('Не удалось проверить вход. Проверьте интернет и повторите.');
     } finally {
       if (mounted) setState(() => _isRetrying = false);
     }
@@ -67,17 +67,17 @@ class _RestaurantEntryPageState extends State<RestaurantEntryPage> {
   void _openLogin() {
     if (!mounted) return;
 
-    Navigator.of(
-      context,
-    ).pushReplacement(AppPageRoute<void>(page: const RestaurantAuthPage()));
+    Navigator.of(context).pushReplacement(
+      AppPageRoute<void>(page: const RestaurantAccessChoicePage()),
+    );
   }
 
   void _openShell() {
     if (!mounted) return;
 
-    Navigator.of(
-      context,
-    ).pushReplacement(AppPageRoute<void>(page: const RestaurantShellPage()));
+    Navigator.of(context).pushReplacement(
+      AppPageRoute<void>(page: const RestaurantShellPage()),
+    );
   }
 
   @override
