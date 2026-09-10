@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart';
-import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_staff_management_page.dart';
+import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_staff_management_v2_page.dart';
 
 class RestaurantProfileAccessPage extends StatelessWidget {
   const RestaurantProfileAccessPage({
