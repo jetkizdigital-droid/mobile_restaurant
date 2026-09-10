@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart';
 import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_staff_management_page.dart';
 
@@ -31,34 +32,37 @@ class RestaurantProfileAccessPage extends StatelessWidget {
                       ),
                     );
                   },
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 14,
                     ),
                     child: Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.groups_2_outlined,
                           color: Color(0xFF65C044),
                         ),
-                        SizedBox(width: 12),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Сотрудники',
-                                style: TextStyle(
+                                context.tr('Сотрудники', 'Қызметкерлер'),
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 16,
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              SizedBox(height: 3),
+                              const SizedBox(height: 3),
                               Text(
-                                'Роли, филиалы и доступ сотрудников',
-                                style: TextStyle(
+                                context.tr(
+                                  'Роли, филиалы и доступ сотрудников',
+                                  'Рөлдер, филиалдар және қызметкерлердің қолжетімділігі',
+                                ),
+                                style: const TextStyle(
                                   color: Color(0xFF95A0B3),
                                   fontSize: 12,
                                 ),
@@ -66,7 +70,7 @@ class RestaurantProfileAccessPage extends StatelessWidget {
                             ],
                           ),
                         ),
-                        Icon(
+                        const Icon(
                           Icons.chevron_right_rounded,
                           color: Color(0xFF95A0B3),
                         ),
