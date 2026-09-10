@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/features/notifications/data/restaurant_notifications_api.dart';
 import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_order_details_page.dart';
 
@@ -46,6 +47,27 @@ class _RestaurantNotificationsPageState
     }
   }
 
+  String _safeError(Object error) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dio') ||
+        lower.contains('socket') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('api') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http')) {
+      return context.tr(
+        'Не удалось загрузить уведомления. Проверьте интернет и повторите.',
+        'Хабарландыруларды жүктеу мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
+      );
+    }
+    return raw;
+  }
+
   Future<void> _load({required bool reset}) async {
     if (reset) {
       setState(() {
@@ -74,7 +96,7 @@ class _RestaurantNotificationsPageState
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString().replaceFirst('Exception: ', '').trim();
+        _error = _safeError(error);
         _loading = false;
         _loadingMore = false;
       });
@@ -124,16 +146,14 @@ class _RestaurantNotificationsPageState
             });
           }
         }
-      } catch (_) {
-        // Navigation must remain available even if read-state sync fails.
-      }
+      } catch (_) {}
     }
 
     final orderId = _readString(item.data['orderId']);
     if (!mounted || orderId == null) return;
 
     await Navigator.of(context).push(
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
         builder: (_) => RestaurantOrderDetailsPage(orderId: orderId),
       ),
     );
@@ -142,13 +162,7 @@ class _RestaurantNotificationsPageState
   void _showError(Object error) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            error.toString().replaceFirst('Exception: ', '').trim(),
-          ),
-        ),
-      );
+      ..showSnackBar(SnackBar(content: Text(_safeError(error))));
   }
 
   @override
@@ -157,11 +171,15 @@ class _RestaurantNotificationsPageState
       backgroundColor: const Color(0xFF09111C),
       appBar: AppBar(
         backgroundColor: const Color(0xFF09111C),
-        title: const Text('Уведомления'),
+        title: Text(context.tr('Уведомления', 'Хабарландырулар')),
         actions: [
           TextButton(
             onPressed: _markingAll ? null : _markAllRead,
-            child: Text(_markingAll ? '...' : 'Прочитать все'),
+            child: Text(
+              _markingAll
+                  ? '...'
+                  : context.tr('Прочитать все', 'Барлығын оқу'),
+            ),
           ),
         ],
       ),
@@ -191,7 +209,7 @@ class _RestaurantNotificationsPageState
               const SizedBox(height: 14),
               ElevatedButton(
                 onPressed: _refresh,
-                child: const Text('Повторить'),
+                child: Text(context.tr('Повторить', 'Қайталау')),
               ),
             ],
           ),
@@ -204,15 +222,21 @@ class _RestaurantNotificationsPageState
         onRefresh: _refresh,
         color: const Color(0xFF489F2A),
         child: ListView(
-          children: const [
-            SizedBox(height: 180),
-            Icon(Icons.notifications_none_rounded,
-                color: Colors.white38, size: 48),
-            SizedBox(height: 12),
+          children: [
+            const SizedBox(height: 180),
+            const Icon(
+              Icons.notifications_none_rounded,
+              color: Colors.white38,
+              size: 48,
+            ),
+            const SizedBox(height: 12),
             Center(
               child: Text(
-                'Уведомлений пока нет',
-                style: TextStyle(color: Colors.white70),
+                context.tr(
+                  'Уведомлений пока нет',
+                  'Әзірге хабарландыру жоқ',
+                ),
+                style: const TextStyle(color: Colors.white70),
               ),
             ),
           ],
@@ -270,7 +294,10 @@ class _NotificationCard extends StatelessWidget {
     final date = item.createdAt?.toLocal();
     final dateText = date == null
         ? ''
-        : DateFormat('dd.MM.yyyy HH:mm', 'ru_RU').format(date);
+        : DateFormat(
+            'dd.MM.yyyy HH:mm',
+            context.isKazakh ? 'kk_KZ' : 'ru_RU',
+          ).format(date);
 
     return Material(
       color: Colors.transparent,
