@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
 import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_order_details_page.dart';
@@ -28,6 +28,8 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   List<Map<String, dynamic>> _visibleOrders = <Map<String, dynamic>>[];
 
   final Set<String> _updatingOrderIds = <String>{};
+  final Set<String> _pendingReadyOrderIds = <String>{};
+  final Map<String, Timer> _pendingReadyTimers = <String, Timer>{};
 
   String _selectedStatus = 'CREATED';
 
@@ -63,6 +65,10 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   @override
   void dispose() {
     _pushRefreshSubscription?.cancel();
+    for (final timer in _pendingReadyTimers.values) {
+      timer.cancel();
+    }
+    _pendingReadyTimers.clear();
     _blinkController.dispose();
     super.dispose();
   }
@@ -147,6 +153,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     Map<String, dynamic> order,
     String nextStatus, {
     String? rejectionReason,
+    String? cancellationReason,
   }) async {
     final orderId = _string(order['id']);
 
@@ -162,15 +169,23 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     });
 
     try {
-      final updated = nextStatus == 'REJECTED'
-          ? await _ordersApi.rejectOrder(
-              id: orderId,
-              reason: rejectionReason ?? '',
-            )
-          : await _ordersApi.updateOrderStatus(
-              id: orderId,
-              status: nextStatus,
-            );
+      final Map<String, dynamic> updated;
+      if (nextStatus == 'REJECTED') {
+        updated = await _ordersApi.rejectOrder(
+          id: orderId,
+          reason: rejectionReason ?? '',
+        );
+      } else if (nextStatus == 'CANCELED') {
+        updated = await _ordersApi.cancelOrder(
+          id: orderId,
+          reason: cancellationReason ?? '',
+        );
+      } else {
+        updated = await _ordersApi.updateOrderStatus(
+          id: orderId,
+          status: nextStatus,
+        );
+      }
 
       if (!mounted) return;
 
@@ -254,7 +269,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Отмена'),
+                  child: const Text('Назад'),
                 ),
                 FilledButton(
                   style: FilledButton.styleFrom(
@@ -277,6 +292,170 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     if (reason != null && reason.trim().isNotEmpty) {
       await _changeStatus(order, 'REJECTED', rejectionReason: reason);
     }
+  }
+
+  Future<void> _confirmCancel(Map<String, dynamic> order) async {
+    final controller = TextEditingController();
+    final paid = _string(order['paymentStatus']).toUpperCase() == 'PAID';
+
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final canSubmit = controller.text.trim().isNotEmpty;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF111827),
+              title: const Text(
+                'Отменить заказ?',
+                style: TextStyle(color: Colors.white),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    paid
+                        ? 'Заказ уже оплачен. После отмены JETKIZ запустит возврат оплаты клиенту. Укажите причину.'
+                        : 'Отмена завершит заказ. Укажите причину — она сохранится в истории.',
+                    style: const TextStyle(color: Color(0xFFCBD5E1)),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 250,
+                    maxLines: 3,
+                    onChanged: (_) => setDialogState(() {}),
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Например: закончился ингредиент',
+                      hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                      filled: true,
+                      fillColor: const Color(0xFF0B1220),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF334155)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF334155)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFDC2626)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Не отменять'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                  ),
+                  onPressed: canSubmit
+                      ? () => Navigator.of(context).pop(controller.text.trim())
+                      : null,
+                  child: const Text('Отменить заказ'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (reason != null && reason.trim().isNotEmpty) {
+      await _changeStatus(order, 'CANCELED', cancellationReason: reason);
+    }
+  }
+
+  Future<void> _confirmReady(Map<String, dynamic> order) async {
+    final isPickup = _isPickup(order);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF111827),
+        title: Text(
+          isPickup ? 'Заказ готов к выдаче?' : 'Заказ готов?',
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          isPickup
+              ? 'После подтверждения клиент увидит, что заказ можно забирать.'
+              : 'После подтверждения JETKIZ сможет начать назначение курьера. Проверьте, что заказ действительно готов.',
+          style: const TextStyle(color: Color(0xFFCBD5E1)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Назад'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Да, готов'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final orderId = _orderId(order);
+    if (orderId.isEmpty ||
+        _pendingReadyOrderIds.contains(orderId) ||
+        _updatingOrderIds.contains(orderId)) {
+      return;
+    }
+
+    setState(() {
+      _pendingReadyOrderIds.add(orderId);
+    });
+
+    var canceled = false;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+
+    final timer = Timer(const Duration(seconds: 5), () {
+      _pendingReadyTimers.remove(orderId);
+      if (!mounted || canceled) return;
+      setState(() {
+        _pendingReadyOrderIds.remove(orderId);
+      });
+      unawaited(_changeStatus(order, 'READY'));
+    });
+    _pendingReadyTimers[orderId] = timer;
+
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 5),
+        content: Text(
+          isPickup
+              ? 'Заказ будет отмечен готовым к выдаче'
+              : 'Заказ будет отмечен готовым',
+        ),
+        action: SnackBarAction(
+          label: 'Отменить действие',
+          onPressed: () {
+            canceled = true;
+            _pendingReadyTimers.remove(orderId)?.cancel();
+            if (!mounted) return;
+            setState(() {
+              _pendingReadyOrderIds.remove(orderId);
+            });
+            _showSnackBar('Действие отменено');
+          },
+        ),
+      ),
+    );
   }
 
   String _statusChangedMessage(String status, {required bool isPickup}) {
@@ -371,6 +550,11 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
         .toList();
   }
 
+  bool _isTerminal(Map<String, dynamic> order) {
+    final status = _status(order);
+    return status == 'DELIVERED' || status == 'REJECTED' || status == 'CANCELED';
+  }
+
   String _clientName(Map<String, dynamic> order) {
     final user = order['user'];
 
@@ -381,12 +565,16 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
       if (fullName.isNotEmpty) return fullName;
 
-      final phone = _string(user['phone']);
-      if (phone.isNotEmpty) return phone;
+      if (!_isTerminal(order)) {
+        final phone = _string(user['phone']);
+        if (phone.isNotEmpty) return phone;
+      }
     }
 
-    final phone = _string(order['phone']);
-    if (phone.isNotEmpty) return phone;
+    if (!_isTerminal(order)) {
+      final phone = _string(order['phone']);
+      if (phone.isNotEmpty) return phone;
+    }
 
     return 'Клиент';
   }
@@ -459,7 +647,9 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   }
 
   bool _isUpdating(Map<String, dynamic> order) {
-    return _updatingOrderIds.contains(_orderId(order));
+    final orderId = _orderId(order);
+    return _updatingOrderIds.contains(orderId) ||
+        _pendingReadyOrderIds.contains(orderId);
   }
 
   List<_OrderAction> _actionsFor(Map<String, dynamic> order) {
@@ -490,6 +680,12 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
             icon: Icons.restaurant_rounded,
             isPrimary: true,
           ),
+          _OrderAction(
+            label: 'Отменить',
+            nextStatus: 'CANCELED',
+            icon: Icons.close_rounded,
+            isDanger: true,
+          ),
         ];
       case 'COOKING':
         return [
@@ -498,6 +694,12 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
             nextStatus: 'READY',
             icon: Icons.done_all_rounded,
             isPrimary: true,
+          ),
+          const _OrderAction(
+            label: 'Отменить',
+            nextStatus: 'CANCELED',
+            icon: Icons.close_rounded,
+            isDanger: true,
           ),
         ];
       default:
@@ -592,11 +794,19 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
           onTap: () => _openOrder(order),
           onActionTap: (action) {
             if (action.nextStatus == 'REJECTED') {
-              _confirmReject(order);
+              unawaited(_confirmReject(order));
+              return;
+            }
+            if (action.nextStatus == 'CANCELED') {
+              unawaited(_confirmCancel(order));
+              return;
+            }
+            if (action.nextStatus == 'READY') {
+              unawaited(_confirmReady(order));
               return;
             }
 
-            _changeStatus(order, action.nextStatus);
+            unawaited(_changeStatus(order, action.nextStatus));
           },
         );
       },
