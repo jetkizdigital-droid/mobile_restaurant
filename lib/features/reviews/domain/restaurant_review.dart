@@ -23,6 +23,21 @@ class RestaurantReview {
   final Map<String, int> reactionsSummary;
   final ReviewResponse? response;
 
+  RestaurantReview withResponse(ReviewResponse? nextResponse) {
+    return RestaurantReview(
+      id: id,
+      rating: rating,
+      createdAt: createdAt,
+      text: text,
+      userName: userName,
+      userAvatar: userAvatar,
+      media: media,
+      reactions: reactions,
+      reactionsSummary: reactionsSummary,
+      response: nextResponse,
+    );
+  }
+
   factory RestaurantReview.fromJson(Map<String, dynamic> json) {
     final user = _asMap(json['user']);
 
