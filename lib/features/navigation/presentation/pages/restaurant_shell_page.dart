@@ -16,6 +16,7 @@ import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.d
 import 'package:jetkiz_restaurant/features/finance/presentation/pages/restaurant_finance_page.dart';
 import 'package:jetkiz_restaurant/features/menu/presentation/pages/restaurant_menu_page.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/widgets/restaurant_bottom_bar.dart';
+import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_sync_bus.dart';
 import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_orders_page.dart'
     as orders_page;
 import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
@@ -48,7 +49,6 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   bool _openingLogin = false;
   bool _isUpdatingAcceptingOrders = false;
   bool _isLoggingOut = false;
-  int _ordersReloadKey = 0;
   RestaurantProfileData? _restaurantProfile;
   RestaurantAppBootstrap? _cmsBootstrap;
   String _restaurantAccessRole = 'UNKNOWN';
@@ -133,9 +133,26 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
   void _refreshActiveOrders() {
     if (!mounted || _currentTab != RestaurantBottomBarTab.orders) return;
-    setState(() {
-      _ordersReloadKey += 1;
-    });
+    RestaurantOrdersSyncBus.instance.requestRefresh();
+  }
+
+  String _userSafeError(Object error, String fallback) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 220 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('api') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http 4') ||
+        lower.contains('http 5')) {
+      return fallback;
+    }
+    return raw;
   }
 
   void _openLogin() {
@@ -351,7 +368,10 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         ..showSnackBar(
           SnackBar(
             content: Text(
-              error.toString().replaceFirst('Exception: ', '').trim(),
+              _userSafeError(
+                error,
+                'Не удалось изменить приём заказов. Проверьте интернет и повторите.',
+              ),
             ),
           ),
         );
@@ -396,7 +416,10 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         ..showSnackBar(
           SnackBar(
             content: Text(
-              error.toString().replaceFirst('Exception: ', '').trim(),
+              _userSafeError(
+                error,
+                'Не удалось отправить заявку. Проверьте интернет и повторите.',
+              ),
             ),
           ),
         );
@@ -415,28 +438,22 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
     setState(() {
       _currentTab = tab;
-      if (tab == RestaurantBottomBarTab.orders) {
-        _ordersReloadKey += 1;
-      }
     });
 
+    if (tab == RestaurantBottomBarTab.orders) {
+      _refreshActiveOrders();
+    }
     unawaited(_loadRestaurant());
   }
 
   Widget _buildPage() {
     if (!_visibleTabs.contains(_currentTab)) {
-      return orders_page.RestaurantOrdersPage(
-        key: ValueKey('orders_$_ordersReloadKey'),
-        hideBottomBar: true,
-      );
+      return const orders_page.RestaurantOrdersPage(hideBottomBar: true);
     }
 
     switch (_currentTab) {
       case RestaurantBottomBarTab.orders:
-        return orders_page.RestaurantOrdersPage(
-          key: ValueKey('orders_$_ordersReloadKey'),
-          hideBottomBar: true,
-        );
+        return const orders_page.RestaurantOrdersPage(hideBottomBar: true);
       case RestaurantBottomBarTab.menu:
         return const RestaurantMenuPage();
       case RestaurantBottomBarTab.profile:
