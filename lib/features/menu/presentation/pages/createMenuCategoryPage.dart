@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 
 import '../../data/restaurant_menu_api.dart';
 import '../../domain/restaurant_menu_models.dart';
@@ -26,7 +27,9 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorText;
-  List<RestaurantMenuCategory> _categories = const [];
+  List<RestaurantMenuCategory> _categories = const <RestaurantMenuCategory>[];
+
+  String _t(String ru, String kk) => context.tr(ru, kk);
 
   @override
   void initState() {
@@ -39,6 +42,35 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
     _titleRuController.dispose();
     _titleKkController.dispose();
     super.dispose();
+  }
+
+  String _safeError(Object error) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http 4') ||
+        lower.contains('http 5')) {
+      return _t(
+        'Не удалось выполнить действие. Проверьте интернет и повторите.',
+        'Әрекетті орындау мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
+      );
+    }
+    return raw;
+  }
+
+  String _categoryName(RestaurantMenuCategory category) {
+    final primary = context.isKazakh ? category.titleKk : category.titleRu;
+    final fallback = context.isKazakh ? category.titleRu : category.titleKk;
+    if (primary.trim().isNotEmpty) return primary.trim();
+    if (fallback.trim().isNotEmpty) return fallback.trim();
+    return _t('Без названия', 'Атаусыз');
   }
 
   Future<void> _load() async {
@@ -55,7 +87,7 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorText = _clean(error);
+        _errorText = _safeError(error);
       });
     }
   }
@@ -63,10 +95,12 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
   Future<void> _create() async {
     final titleRu = _titleRuController.text.trim();
     final titleKk = _titleKkController.text.trim();
-
     if (titleRu.isEmpty || titleKk.isEmpty) {
       setState(() {
-        _errorText = 'Укажите название категории на русском и казахском';
+        _errorText = _t(
+          'Укажите название категории на русском и казахском.',
+          'Санат атауын орыс және қазақ тілдерінде көрсетіңіз.',
+        );
       });
       return;
     }
@@ -75,7 +109,6 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
       _isSaving = true;
       _errorText = null;
     });
-
     try {
       await _api.createCategory(
         restaurantId: widget.restaurantId,
@@ -83,13 +116,14 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
         titleKk: titleKk,
         sortOrder: widget.nextSortOrder ?? _categories.length,
       );
-
       _titleRuController.clear();
       _titleKkController.clear();
       await _load();
+      if (mounted) {
+        _message(_t('Категория добавлена', 'Санат қосылды'));
+      }
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _errorText = _clean(error));
+      if (mounted) setState(() => _errorText = _safeError(error));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -101,31 +135,31 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
 
     final save = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF111827),
-        title: const Text('Изменить категорию'),
+        title: Text(_t('Изменить категорию', 'Санатты өзгерту')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _DialogField(
               controller: ruController,
-              label: 'Название на русском',
+              label: _t('Название на русском', 'Орысша атауы'),
             ),
             const SizedBox(height: 12),
             _DialogField(
               controller: kkController,
-              label: 'Название на казахском',
+              label: _t('Название на казахском', 'Қазақша атауы'),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_t('Отмена', 'Бас тарту')),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Сохранить'),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_t('Сохранить', 'Сақтау')),
           ),
         ],
       ),
@@ -141,9 +175,13 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
     final titleKk = kkController.text.trim();
     ruController.dispose();
     kkController.dispose();
-
     if (titleRu.isEmpty || titleKk.isEmpty) {
-      _message('Оба названия обязательны');
+      _message(
+        _t(
+          'Оба названия обязательны.',
+          'Екі тілдегі атау да міндетті.',
+        ),
+      );
       return;
     }
 
@@ -156,37 +194,37 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
         sortOrder: category.sortOrder,
       );
       await _load();
+      if (mounted) _message(_t('Категория сохранена', 'Санат сақталды'));
     } catch (error) {
-      if (mounted) _message(_clean(error));
+      if (mounted) _message(_safeError(error));
     }
   }
 
   Future<void> _delete(RestaurantMenuCategory category) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF111827),
-        title: const Text('Удалить категорию?'),
+        title: Text(_t('Удалить категорию?', 'Санатты жою керек пе?')),
         content: Text(
-          'Категория «${category.title}» будет удалена, если в ней нет блюд.',
+          '${_t('Категория', 'Санат')} «${_categoryName(category)}» ${_t('будет удалена, если в ней нет блюд.', 'ішінде тағам болмаса жойылады.')}',
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_t('Отмена', 'Бас тарту')),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
+          FilledButton(
+            style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFB3261E),
             ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Удалить'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_t('Удалить', 'Жою')),
           ),
         ],
       ),
     );
-
     if (confirmed != true) return;
 
     try {
@@ -195,13 +233,11 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
         categoryId: category.id,
       );
       await _load();
+      if (mounted) _message(_t('Категория удалена', 'Санат жойылды'));
     } catch (error) {
-      if (mounted) _message(_clean(error));
+      if (mounted) _message(_safeError(error));
     }
   }
-
-  String _clean(Object error) =>
-      error.toString().replaceFirst('Exception: ', '').trim();
 
   void _message(String message) {
     ScaffoldMessenger.of(context)
@@ -215,7 +251,7 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
       backgroundColor: const Color(0xFF09111C),
       appBar: AppBar(
         backgroundColor: const Color(0xFF09111C),
-        title: const Text('Категории меню'),
+        title: Text(_t('Категории меню', 'Мәзір санаттары')),
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -225,9 +261,9 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
             children: [
-              const Text(
-                'Новая категория',
-                style: TextStyle(
+              Text(
+                _t('Новая категория', 'Жаңа санат'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -236,14 +272,14 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
               const SizedBox(height: 12),
               _field(
                 controller: _titleRuController,
-                label: 'Название на русском *',
-                hint: 'Например: Десерты',
+                label: _t('Название на русском *', 'Орысша атауы *'),
+                hint: _t('Например: Десерты', 'Мысалы: Десерты'),
               ),
               const SizedBox(height: 12),
               _field(
                 controller: _titleKkController,
-                label: 'Название на казахском *',
-                hint: 'Мысалы: Десерттер',
+                label: _t('Название на казахском *', 'Қазақша атауы *'),
+                hint: _t('Например: Десерттер', 'Мысалы: Десерттер'),
               ),
               if (_errorText != null) ...[
                 const SizedBox(height: 10),
@@ -255,14 +291,10 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
               const SizedBox(height: 14),
               SizedBox(
                 height: 50,
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: _isSaving ? null : _create,
-                  style: ElevatedButton.styleFrom(
+                  style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF54B52E),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
                   ),
                   child: _isSaving
                       ? const SizedBox(
@@ -273,19 +305,19 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          'Добавить категорию',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                      : Text(
+                          _t('Добавить категорию', 'Санат қосу'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                 ),
               ),
               const SizedBox(height: 26),
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Текущие категории',
-                      style: TextStyle(
+                      _t('Текущие категории', 'Қазіргі санаттар'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -303,17 +335,25 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
                 const Padding(
                   padding: EdgeInsets.all(24),
                   child: Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF54B52E),
-                    ),
+                    child: CircularProgressIndicator(color: Color(0xFF54B52E)),
                   ),
                 )
               else if (_categories.isEmpty)
-                const _EmptyCategories()
+                _EmptyCategories(
+                  text: _t('Категорий пока нет', 'Әзірге санаттар жоқ'),
+                )
               else
                 ..._categories.map(
                   (category) => _CategoryCard(
                     category: category,
+                    displayName: _categoryName(category),
+                    languageHint: context.isKazakh
+                        ? (category.titleRu.trim().isEmpty
+                            ? _t('Русское название не указано', 'Орысша атауы көрсетілмеген')
+                            : category.titleRu.trim())
+                        : (category.titleKk.trim().isEmpty
+                            ? _t('Казахское название не указано', 'Қазақша атауы көрсетілмеген')
+                            : category.titleKk.trim()),
                     onEdit: () => _edit(category),
                     onDelete: () => _delete(category),
                   ),
@@ -350,9 +390,7 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
             hintStyle: const TextStyle(color: Color(0xFF6F7D91)),
             filled: true,
             fillColor: const Color(0xFF162035),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
       ],
@@ -363,11 +401,15 @@ class _CreateMenuCategoryPageState extends State<CreateMenuCategoryPage> {
 class _CategoryCard extends StatelessWidget {
   const _CategoryCard({
     required this.category,
+    required this.displayName,
+    required this.languageHint,
     required this.onEdit,
     required this.onDelete,
   });
 
   final RestaurantMenuCategory category;
+  final String displayName;
+  final String languageHint;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -390,7 +432,7 @@ class _CategoryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  category.titleRu,
+                  displayName,
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
@@ -398,7 +440,7 @@ class _CategoryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  category.titleKk.isEmpty ? 'Казахское название не указано' : category.titleKk,
+                  languageHint,
                   style: const TextStyle(
                     color: Color(0xFF93A0B4),
                     fontSize: 12,
@@ -407,8 +449,13 @@ class _CategoryCard extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
           IconButton(
+            tooltip: context.tr('Изменить', 'Өзгерту'),
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: context.tr('Удалить', 'Жою'),
             onPressed: onDelete,
             icon: const Icon(Icons.delete_outline, color: Color(0xFFFF7777)),
           ),
@@ -420,7 +467,6 @@ class _CategoryCard extends StatelessWidget {
 
 class _DialogField extends StatelessWidget {
   const _DialogField({required this.controller, required this.label});
-
   final TextEditingController controller;
   final String label;
 
@@ -435,7 +481,8 @@ class _DialogField extends StatelessWidget {
 }
 
 class _EmptyCategories extends StatelessWidget {
-  const _EmptyCategories();
+  const _EmptyCategories({required this.text});
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -445,10 +492,10 @@ class _EmptyCategories extends StatelessWidget {
         color: const Color(0xFF111827),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Text(
-        'Категорий пока нет',
+      child: Text(
+        text,
         textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.white60),
+        style: const TextStyle(color: Colors.white60),
       ),
     );
   }
