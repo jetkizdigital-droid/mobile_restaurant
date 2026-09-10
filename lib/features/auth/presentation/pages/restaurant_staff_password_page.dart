@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/pages/restaurant_shell_page.dart';
@@ -25,7 +26,6 @@ class _RestaurantStaffPasswordPageState
   final TextEditingController _confirmPasswordController =
       TextEditingController();
 
-  late bool _kazakh;
   bool _loading = false;
   bool _changeRequired = false;
   bool _obscurePassword = true;
@@ -34,13 +34,7 @@ class _RestaurantStaffPasswordPageState
   String _normalizedPhone = '';
   String _temporaryPassword = '';
 
-  String _t(String ru, String kk) => _kazakh ? kk : ru;
-
-  @override
-  void initState() {
-    super.initState();
-    _kazakh = widget.initialLanguageCode.toLowerCase() == 'kk';
-  }
+  String _t(String ru, String kk) => context.tr(ru, kk);
 
   @override
   void dispose() {
@@ -76,18 +70,17 @@ class _RestaurantStaffPasswordPageState
     final raw = error.toString().replaceFirst('Exception: ', '').trim();
     final lower = raw.toLowerCase();
 
-    if (lower.contains('dioexception') ||
+    if (raw.isEmpty ||
+        raw.length > 220 ||
+        lower.contains('dioexception') ||
         lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('api') ||
+        lower.contains('endpoint') ||
         lower.contains('http ') ||
         lower.contains('status code') ||
         lower.contains('connection')) {
-      return _t(
-        'Не удалось подключиться. Проверьте интернет и попробуйте ещё раз.',
-        'Қосылу мүмкін болмады. Интернетті тексеріп, қайта көріңіз.',
-      );
-    }
-
-    if (raw.isEmpty || raw.length > 220) {
       return _t(fallbackRu, fallbackKk);
     }
 
@@ -231,11 +224,9 @@ class _RestaurantStaffPasswordPageState
         ),
         actions: [
           TextButton(
-            onPressed: _loading
-                ? null
-                : () => setState(() => _kazakh = !_kazakh),
+            onPressed: _loading ? null : AppLocaleController.instance.toggle,
             child: Text(
-              _kazakh ? 'RU' : 'ҚАЗ',
+              context.isKazakh ? 'RU' : 'ҚАЗ',
               style: const TextStyle(
                 color: Color(0xFF65C044),
                 fontWeight: FontWeight.w800,
