@@ -3,13 +3,8 @@ import 'package:flutter/material.dart';
 /// JETKIZ RESTAURANT APP
 /// Bottom navigation for the restaurant shell.
 ///
-/// ВАЖНО:
-/// - Этот файл является source of truth для tab enum.
-/// - Все экраны shell должны использовать именно RestaurantBottomBarTab.
-/// - Текущая архитектура restaurant app:
-///   orders / menu / profile / finance / support
-/// - Если меняются названия вкладок, сначала меняем enum здесь,
-///   потом синхронизируем restaurant_shell_page.dart.
+/// This file is the source of truth for the shell tab enum. The shell may pass
+/// a role-scoped [visibleTabs] list; hidden tabs are not rendered or tappable.
 enum RestaurantBottomBarTab {
   orders,
   menu,
@@ -22,12 +17,14 @@ class RestaurantBottomBar extends StatelessWidget {
   final RestaurantBottomBarTab currentTab;
   final ValueChanged<RestaurantBottomBarTab> onTabSelected;
   final bool isVisible;
+  final List<RestaurantBottomBarTab>? visibleTabs;
 
   const RestaurantBottomBar({
     super.key,
     required this.currentTab,
     required this.onTabSelected,
     this.isVisible = true,
+    this.visibleTabs,
   });
 
   static const List<_RestaurantBottomBarItem> _items = [
@@ -60,6 +57,15 @@ class RestaurantBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final allowedTabs = visibleTabs?.toSet();
+    final items = allowedTabs == null
+        ? _items
+        : _items.where((item) => allowedTabs.contains(item.tab)).toList();
+
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return AnimatedSlide(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -88,7 +94,7 @@ class RestaurantBottomBar extends StatelessWidget {
               ],
             ),
             child: Row(
-              children: _items.map((item) {
+              children: items.map((item) {
                 final isSelected = item.tab == currentTab;
 
                 return Expanded(
