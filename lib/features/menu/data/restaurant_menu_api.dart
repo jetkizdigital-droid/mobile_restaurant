@@ -9,6 +9,17 @@ class RestaurantMenuApi {
 
   final ApiClient _client;
 
+  // One RestaurantMenuApi instance belongs to one editor screen. Once a new
+  // product is successfully created, retries in the same editor update that
+  // product instead of creating another row if a later step (images/stop-list)
+  // failed.
+  String? _createdProductId;
+
+  // Existing image mutations are staged locally by the editor and committed
+  // only from updateProduct(), i.e. from the final Save action.
+  final Set<String> _pendingDeletedImageIds = <String>{};
+  String? _pendingMainImageId;
+
   RestaurantMenuApi({ApiClient? client})
       : _client = client ?? ApiClient.instance;
 
@@ -47,12 +58,33 @@ class RestaurantMenuApi {
     Map<String, dynamic> data,
   ) async {
     _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
+
+    final existingId = _createdProductId;
+    if (existingId != null && existingId.isNotEmpty) {
+      final response = await _client.patch(
+        '/restaurants/$restaurantId/menu/products/$existingId',
+        data,
+      );
+      if (response is Map) {
+        return <String, dynamic>{
+          ...Map<String, dynamic>.from(response),
+          'id': existingId,
+        };
+      }
+      return <String, dynamic>{'id': existingId};
+    }
+
     final response = await _client.post(
       '/restaurants/$restaurantId/menu/products',
       data,
     );
 
-    return Map<String, dynamic>.from(response as Map);
+    final result = Map<String, dynamic>.from(response as Map);
+    final id = result['id']?.toString().trim() ?? '';
+    if (id.isNotEmpty) {
+      _createdProductId = id;
+    }
+    return result;
   }
 
   Future<Map<String, dynamic>> updateProduct(
@@ -64,6 +96,11 @@ class RestaurantMenuApi {
     final response = await _client.patch(
       '/restaurants/$restaurantId/menu/products/$productId',
       data,
+    );
+
+    await _flushPendingImageMutations(
+      restaurantId: restaurantId,
+      productId: productId,
     );
 
     return Map<String, dynamic>.from(response as Map);
@@ -189,10 +226,9 @@ class RestaurantMenuApi {
     required String imageId,
   }) async {
     _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
-    await _client.patch(
-      '/restaurants/$restaurantId/menu/products/$productId/images/$imageId/main',
-      {},
-    );
+    final id = imageId.trim();
+    if (id.isEmpty || _pendingDeletedImageIds.contains(id)) return;
+    _pendingMainImageId = id;
   }
 
   Future<void> deleteImage({
@@ -201,9 +237,41 @@ class RestaurantMenuApi {
     required String imageId,
   }) async {
     _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
-    await _client.delete(
-      '/restaurants/$restaurantId/menu/products/$productId/images/$imageId',
+    final id = imageId.trim();
+    if (id.isEmpty) return;
+    _pendingDeletedImageIds.add(id);
+    if (_pendingMainImageId == id) {
+      _pendingMainImageId = null;
+    }
+  }
+
+  Future<void> _flushPendingImageMutations({
+    required String restaurantId,
+    required String productId,
+  }) async {
+    final deletedIds = List<String>.from(_pendingDeletedImageIds);
+    for (final imageId in deletedIds) {
+      try {
+        await _client.delete(
+          '/restaurants/$restaurantId/menu/products/$productId/images/$imageId',
+        );
+      } on ApiException catch (error) {
+        // A lost response after a successful delete may make a retry return
+        // 404. In that case the requested final state is already reached.
+        if (error.statusCode != 404) rethrow;
+      }
+      _pendingDeletedImageIds.remove(imageId);
+    }
+
+    final mainImageId = _pendingMainImageId;
+    if (mainImageId == null || mainImageId.isEmpty) return;
+    if (_pendingDeletedImageIds.contains(mainImageId)) return;
+
+    await _client.patch(
+      '/restaurants/$restaurantId/menu/products/$productId/images/$mainImageId/main',
+      <String, dynamic>{},
     );
+    _pendingMainImageId = null;
   }
 
   Future<File> _prepareUploadImage(File original) async {
