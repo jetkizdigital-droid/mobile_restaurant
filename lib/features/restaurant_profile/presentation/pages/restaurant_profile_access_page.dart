@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart';
-import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_staff_page.dart';
+import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages/restaurant_staff_management_page.dart';
 
 class RestaurantProfileAccessPage extends StatelessWidget {
   const RestaurantProfileAccessPage({
@@ -27,23 +27,23 @@ class RestaurantProfileAccessPage extends StatelessWidget {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => const RestaurantStaffPage(),
+                        builder: (_) => const RestaurantStaffManagementPage(),
                       ),
                     );
                   },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 14,
                     ),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.groups_2_outlined,
                           color: Color(0xFF65C044),
                         ),
-                        const SizedBox(width: 12),
-                        const Expanded(
+                        SizedBox(width: 12),
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -66,7 +66,7 @@ class RestaurantProfileAccessPage extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const Icon(
+                        Icon(
                           Icons.chevron_right_rounded,
                           color: Color(0xFF95A0B3),
                         ),
