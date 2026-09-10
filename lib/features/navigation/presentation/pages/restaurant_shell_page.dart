@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
@@ -36,6 +39,10 @@ class RestaurantShellPage extends StatefulWidget {
 
 class _RestaurantShellPageState extends State<RestaurantShellPage>
     with WidgetsBindingObserver {
+  static const String _roleOwner = 'OWNER';
+  static const String _roleManager = 'MANAGER';
+  static const String _roleStaff = 'STAFF';
+
   late RestaurantBottomBarTab _currentTab;
   StreamSubscription<void>? _sessionExpiredSubscription;
   Timer? _ordersRefreshTimer;
@@ -45,14 +52,36 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   int _ordersReloadKey = 0;
   RestaurantProfileData? _restaurantProfile;
   RestaurantAppBootstrap? _cmsBootstrap;
+  String _restaurantAccessRole = 'UNKNOWN';
 
-  final List<RestaurantBottomBarTab> _tabOrder = <RestaurantBottomBarTab>[
+  static const List<RestaurantBottomBarTab> _managerTabs =
+      <RestaurantBottomBarTab>[
     RestaurantBottomBarTab.orders,
     RestaurantBottomBarTab.menu,
     RestaurantBottomBarTab.profile,
     RestaurantBottomBarTab.finance,
     RestaurantBottomBarTab.support,
   ];
+
+  static const List<RestaurantBottomBarTab> _staffTabs =
+      <RestaurantBottomBarTab>[
+    RestaurantBottomBarTab.orders,
+  ];
+
+  List<RestaurantBottomBarTab> get _visibleTabs {
+    if (_restaurantAccessRole == _roleOwner ||
+        _restaurantAccessRole == _roleManager) {
+      return _managerTabs;
+    }
+
+    // Fail closed while /auth/me is unresolved. A STAFF/unknown session can
+    // work with orders but cannot expose finance/profile/menu controls.
+    return _staffTabs;
+  }
+
+  bool get _canManageRestaurant =>
+      _restaurantAccessRole == _roleOwner ||
+      _restaurantAccessRole == _roleManager;
 
   @override
   void initState() {
@@ -66,6 +95,10 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       (_) => _refreshActiveOrders(),
     );
     unawaited(RestaurantPushNotificationService.instance.markNavigationReady());
+    // The push service can initialize before login and therefore legitimately
+    // skip token registration. Retry immediately after the authenticated shell
+    // appears and request notification permission on the first login.
+    unawaited(_registerPushAfterLogin());
     unawaited(_loadRestaurant());
   }
 
@@ -90,6 +123,16 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     );
     unawaited(_loadRestaurant());
     _refreshActiveOrders();
+  }
+
+  Future<void> _registerPushAfterLogin() async {
+    try {
+      await RestaurantPushNotificationService.instance.registerCurrentToken(
+        requestPermissionIfNeeded: true,
+      );
+    } catch (error) {
+      debugPrint('Restaurant push registration after login failed: $error');
+    }
   }
 
   void _refreshActiveOrders() {
@@ -152,11 +195,42 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     ).push(MaterialPageRoute(builder: (_) => const RestaurantSupportPage()));
   }
 
+  String _resolveRestaurantAccessRole(
+    Map<String, dynamic>? me,
+    String restaurantId,
+  ) {
+    final accesses = me?['restaurantAccesses'];
+    if (accesses is! List) return 'UNKNOWN';
+
+    for (final raw in accesses) {
+      if (raw is! Map) continue;
+      final id = raw['restaurantId']?.toString().trim() ?? '';
+      if (id != restaurantId) continue;
+
+      final source = raw['source']?.toString().trim().toUpperCase() ?? '';
+      final role = raw['role']?.toString().trim().toUpperCase() ?? '';
+      if (source == _roleOwner || role == _roleOwner) return _roleOwner;
+      if (role == _roleManager) return _roleManager;
+      if (role == _roleStaff) return _roleStaff;
+      return 'UNKNOWN';
+    }
+
+    return 'UNKNOWN';
+  }
+
   Future<void> _loadRestaurant() async {
     try {
+      Map<String, dynamic>? me;
+      try {
+        me = await AuthApi().getMe();
+      } catch (error) {
+        debugPrint('Restaurant auth/me unavailable: $error');
+      }
+
       final restaurantApi = RestaurantApi(ApiClient.instance);
       final restaurant = await restaurantApi.getMyRestaurant();
       RestaurantSession.restaurant = restaurant;
+      final accessRole = _resolveRestaurantAccessRole(me, restaurant.id);
 
       RestaurantAppBootstrap? bootstrap;
       try {
@@ -171,6 +245,10 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       setState(() {
         _restaurantProfile = restaurant;
         _cmsBootstrap = bootstrap;
+        _restaurantAccessRole = accessRole;
+        if (!_visibleTabs.contains(_currentTab)) {
+          _currentTab = RestaurantBottomBarTab.orders;
+        }
       });
     } catch (e, st) {
       debugPrint('ERROR loading restaurant: $e');
@@ -178,8 +256,56 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     }
   }
 
+  Future<bool> _notificationsAllowedForOrders() async {
+    try {
+      await RestaurantPushNotificationService.instance.registerCurrentToken(
+        requestPermissionIfNeeded: true,
+      );
+
+      if (Platform.isAndroid) {
+        final androidPlugin = FlutterLocalNotificationsPlugin()
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        final enabled = await androidPlugin?.areNotificationsEnabled();
+        if (enabled != null) return enabled;
+      }
+
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      return settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+    } catch (error) {
+      debugPrint('Restaurant notification readiness check failed: $error');
+      return false;
+    }
+  }
+
+  Future<void> _showNotificationRequiredDialog() async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF111827),
+        title: const Text(
+          'Включите уведомления',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'JETKIZ не включит приём заказов без уведомлений: ресторан может пропустить оплаченный заказ. Разрешите уведомления для JETKIZ Restaurant и повторите.',
+          style: TextStyle(color: Color(0xFFCBD5E1), height: 1.4),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Понятно'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _setAcceptingOrders(bool value) async {
-    if (_isUpdatingAcceptingOrders) return;
+    if (_isUpdatingAcceptingOrders || !_canManageRestaurant) return;
 
     final cms = _cmsBootstrap;
     if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
@@ -190,6 +316,12 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       return;
     }
 
+    if (value && !await _notificationsAllowedForOrders()) {
+      await _showNotificationRequiredDialog();
+      return;
+    }
+
+    if (!mounted) return;
     setState(() {
       _isUpdatingAcceptingOrders = true;
     });
@@ -242,7 +374,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   }
 
   Future<void> _resubmitForReview() async {
-    if (_isUpdatingAcceptingOrders) return;
+    if (_isUpdatingAcceptingOrders || !_canManageRestaurant) return;
 
     setState(() {
       _isUpdatingAcceptingOrders = true;
@@ -288,7 +420,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
   void _onTabSelected(RestaurantBottomBarTab tab) {
     if (_currentTab == tab) return;
-    if (!_tabOrder.contains(tab)) return;
+    if (!_visibleTabs.contains(tab)) return;
 
     setState(() {
       _currentTab = tab;
@@ -303,6 +435,13 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   }
 
   Widget _buildPage() {
+    if (!_visibleTabs.contains(_currentTab)) {
+      return orders_page.RestaurantOrdersPage(
+        key: ValueKey('orders_$_ordersReloadKey'),
+        hideBottomBar: true,
+      );
+    }
+
     switch (_currentTab) {
       case RestaurantBottomBarTab.orders:
         return orders_page.RestaurantOrdersPage(
@@ -360,7 +499,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
                 title: maintenance?.titleRu,
                 body: maintenance?.bodyRu,
               ),
-            if (profile != null)
+            if (profile != null && _canManageRestaurant)
               RestaurantOperationalBanner(
                 profile: profile,
                 isUpdating: _isUpdatingAcceptingOrders,
@@ -375,6 +514,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       ),
       bottomNavigationBar: RestaurantBottomBar(
         currentTab: _currentTab,
+        visibleTabs: _visibleTabs,
         onTabSelected: _onTabSelected,
       ),
     );
