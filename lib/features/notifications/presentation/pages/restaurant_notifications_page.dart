@@ -69,47 +69,71 @@ class _RestaurantNotificationsPageState
   }
 
   Future<void> _load({required bool reset}) async {
-    if (reset) {
-      setState(() {
-        _loading = true;
-        _error = null;
-        _page = 1;
-      });
-    }
+    if (!reset) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
-      final result = await _api.getNotifications(page: reset ? 1 : _page);
+      final result = await _api.getNotifications(page: 1);
       if (!mounted) return;
 
       setState(() {
+        _page = 1;
         _total = result.total;
-        if (reset) {
-          _items
-            ..clear()
-            ..addAll(result.items);
-        } else {
-          _items.addAll(result.items);
-        }
-        _loading = false;
-        _loadingMore = false;
+        _items
+          ..clear()
+          ..addAll(result.items);
+        _error = null;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = _safeError(error);
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
         _loading = false;
-        _loadingMore = false;
       });
     }
   }
 
   Future<void> _loadMore() async {
     if (!_hasMore || _loadingMore) return;
+
+    final nextPage = _page + 1;
     setState(() {
       _loadingMore = true;
-      _page += 1;
     });
-    await _load(reset: false);
+
+    try {
+      final result = await _api.getNotifications(page: nextPage);
+      if (!mounted) return;
+
+      final seenIds = _items.map((item) => item.id).toSet();
+      final freshItems = result.items
+          .where((item) => item.id.isEmpty || seenIds.add(item.id))
+          .toList(growable: false);
+
+      setState(() {
+        _items.addAll(freshItems);
+        _page = nextPage;
+        _total = result.total;
+        _error = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingMore = false;
+        });
+      }
+    }
   }
 
   Future<void> _refresh() => _load(reset: true);
