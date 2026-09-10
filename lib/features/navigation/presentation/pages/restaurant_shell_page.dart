@@ -4,20 +4,21 @@ import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/core/session/restaurant_session.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
-import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
+import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_access_choice_page.dart';
 import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.dart';
 import 'package:jetkiz_restaurant/features/finance/presentation/pages/restaurant_finance_page.dart';
 import 'package:jetkiz_restaurant/features/menu/presentation/pages/restaurant_menu_page.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/widgets/restaurant_bottom_bar.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_sync_bus.dart';
-import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_orders_page.dart'
+import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_orders_localized_page.dart'
     as orders_page;
 import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
 import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_data.dart';
@@ -26,12 +27,12 @@ import 'package:jetkiz_restaurant/features/restaurant_profile/presentation/pages
 import 'package:jetkiz_restaurant/features/support/presentation/pages/restaurant_support_page.dart';
 
 class RestaurantShellPage extends StatefulWidget {
-  final RestaurantBottomBarTab initialTab;
-
   const RestaurantShellPage({
     super.key,
     this.initialTab = RestaurantBottomBarTab.orders,
   });
+
+  final RestaurantBottomBarTab initialTab;
 
   @override
   State<RestaurantShellPage> createState() => _RestaurantShellPageState();
@@ -46,6 +47,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   late RestaurantBottomBarTab _currentTab;
   StreamSubscription<void>? _sessionExpiredSubscription;
   Timer? _ordersRefreshTimer;
+
   bool _openingLogin = false;
   bool _isUpdatingAcceptingOrders = false;
   bool _isLoggingOut = false;
@@ -72,7 +74,6 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         _restaurantAccessRole == _roleManager) {
       return _managerTabs;
     }
-
     return _staffTabs;
   }
 
@@ -81,6 +82,8 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       _restaurantAccessRole == _roleManager;
 
   bool get _isOwner => _restaurantAccessRole == _roleOwner;
+
+  String _t(String ru, String kk) => context.tr(ru, kk);
 
   @override
   void initState() {
@@ -136,7 +139,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     RestaurantOrdersSyncBus.instance.requestRefresh();
   }
 
-  String _userSafeError(Object error, String fallback) {
+  String _userSafeError(Object error, String fallbackRu, String fallbackKk) {
     final raw = error.toString().replaceFirst('Exception: ', '').trim();
     final lower = raw.toLowerCase();
     if (raw.isEmpty ||
@@ -145,12 +148,11 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         lower.contains('socketexception') ||
         lower.contains('exception') ||
         lower.contains('backend') ||
-        lower.contains('api') ||
         lower.contains('endpoint') ||
         lower.contains('status code') ||
         lower.contains('http 4') ||
         lower.contains('http 5')) {
-      return fallback;
+      return _t(fallbackRu, fallbackKk);
     }
     return raw;
   }
@@ -162,45 +164,38 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     RestaurantAppCmsSession.instance.clear();
     RestaurantPushNotificationService.instance.markNavigationUnavailable();
     Navigator.of(context).pushAndRemoveUntil(
-      AppPageRoute<void>(page: const RestaurantAuthPage()),
+      AppPageRoute<void>(page: const RestaurantAccessChoicePage()),
       (route) => false,
     );
   }
 
   Future<void> _logout() async {
     if (_isLoggingOut || _openingLogin) return;
-
-    setState(() {
-      _isLoggingOut = true;
-    });
+    setState(() => _isLoggingOut = true);
 
     try {
       try {
         await RestaurantPushNotificationService.instance
             .unregisterCurrentToken();
       } catch (_) {}
-
       try {
         await AuthApi().logout();
       } catch (_) {}
 
       await AuthStorage().clearTokens();
       ApiClient.instance.clearSelectedRestaurantId();
-      if (!mounted) return;
-      _openLogin();
+      if (mounted) _openLogin();
     } finally {
       if (mounted && !_openingLogin) {
-        setState(() {
-          _isLoggingOut = false;
-        });
+        setState(() => _isLoggingOut = false);
       }
     }
   }
 
   void _openSupportDuringMaintenance() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RestaurantSupportPage()));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const RestaurantSupportPage()),
+    );
   }
 
   String _resolveRestaurantAccessRole(
@@ -222,7 +217,6 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       if (role == _roleStaff) return _roleStaff;
       return 'UNKNOWN';
     }
-
     return 'UNKNOWN';
   }
 
@@ -243,9 +237,9 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       RestaurantAppBootstrap? bootstrap;
       try {
         bootstrap = await RestaurantAppCmsSession.instance.refresh();
-      } catch (e, st) {
-        debugPrint('CMS bootstrap unavailable: $e');
-        debugPrintStack(stackTrace: st);
+      } catch (error, stackTrace) {
+        debugPrint('CMS bootstrap unavailable: $error');
+        debugPrintStack(stackTrace: stackTrace);
         bootstrap = RestaurantAppCmsSession.instance.state.value;
       }
 
@@ -258,9 +252,9 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
           _currentTab = RestaurantBottomBarTab.orders;
         }
       });
-    } catch (e, st) {
-      debugPrint('ERROR loading restaurant: $e');
-      debugPrintStack(stackTrace: st);
+    } catch (error, stackTrace) {
+      debugPrint('Restaurant load failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -289,23 +283,25 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
   Future<void> _showNotificationRequiredDialog() async {
     if (!mounted) return;
-
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF111827),
-        title: const Text(
-          'Включите уведомления',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          _t('Включите уведомления', 'Хабарландыруларды қосыңыз'),
+          style: const TextStyle(color: Colors.white),
         ),
-        content: const Text(
-          'JETKIZ не включит приём заказов без уведомлений: ресторан может пропустить оплаченный заказ. Разрешите уведомления для JETKIZ Restaurant и повторите.',
-          style: TextStyle(color: Color(0xFFCBD5E1), height: 1.4),
+        content: Text(
+          _t(
+            'JETKIZ не включит приём заказов без уведомлений: ресторан может пропустить оплаченный заказ. Разрешите уведомления для JETKIZ Restaurant и повторите.',
+            'JETKIZ хабарландыруларсыз тапсырыс қабылдауды қоспайды: мейрамхана төленген тапсырысты өткізіп алуы мүмкін. JETKIZ Restaurant хабарландыруларына рұқсат беріп, қайталаңыз.',
+          ),
+          style: const TextStyle(color: Color(0xFFCBD5E1), height: 1.4),
         ),
         actions: [
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Понятно'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_t('Понятно', 'Түсінікті')),
           ),
         ],
       ),
@@ -317,9 +313,20 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
     final cms = _cmsBootstrap;
     if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
-      final reason = cms.featureReason('ACCEPT_ORDERS_ENABLED');
+      final reason = cms.featureReason(
+        'ACCEPT_ORDERS_ENABLED',
+        kazakh: context.isKazakh,
+      );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(reason ?? 'Приём заказов временно недоступен')),
+        SnackBar(
+          content: Text(
+            reason ??
+                _t(
+                  'Приём заказов временно недоступен',
+                  'Тапсырыс қабылдау уақытша қолжетімсіз',
+                ),
+          ),
+        ),
       );
       return;
     }
@@ -330,13 +337,12 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     }
 
     if (!mounted) return;
-    setState(() {
-      _isUpdatingAcceptingOrders = true;
-    });
+    setState(() => _isUpdatingAcceptingOrders = true);
 
     try {
-      final restaurantApi = RestaurantApi(ApiClient.instance);
-      final restaurant = await restaurantApi.setAcceptingOrders(value);
+      final restaurant = await RestaurantApi(
+        ApiClient.instance,
+      ).setAcceptingOrders(value);
       RestaurantSession.restaurant = restaurant;
 
       RestaurantAppBootstrap? bootstrap;
@@ -357,7 +363,12 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         ..showSnackBar(
           SnackBar(
             content: Text(
-              value ? 'Приём заказов включён' : 'Приём заказов приостановлен',
+              value
+                  ? _t('Приём заказов включён', 'Тапсырыс қабылдау қосылды')
+                  : _t(
+                      'Приём заказов приостановлен',
+                      'Тапсырыс қабылдау тоқтатылды',
+                    ),
             ),
           ),
         );
@@ -371,25 +382,19 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
               _userSafeError(
                 error,
                 'Не удалось изменить приём заказов. Проверьте интернет и повторите.',
+                'Тапсырыс қабылдау күйін өзгерту мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
               ),
             ),
           ),
         );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isUpdatingAcceptingOrders = false;
-        });
-      }
+      if (mounted) setState(() => _isUpdatingAcceptingOrders = false);
     }
   }
 
   Future<void> _resubmitForReview() async {
     if (_isUpdatingAcceptingOrders || !_canManageRestaurant) return;
-
-    setState(() {
-      _isUpdatingAcceptingOrders = true;
-    });
+    setState(() => _isUpdatingAcceptingOrders = true);
 
     try {
       final restaurant = await RestaurantApi(
@@ -398,15 +403,17 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       RestaurantSession.restaurant = restaurant;
 
       if (!mounted) return;
-      setState(() {
-        _restaurantProfile = restaurant;
-      });
-
+      setState(() => _restaurantProfile = restaurant);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(
-            content: Text('Заявка повторно отправлена на модерацию'),
+          SnackBar(
+            content: Text(
+              _t(
+                'Заявка повторно отправлена на модерацию',
+                'Өтінім модерацияға қайта жіберілді',
+              ),
+            ),
           ),
         );
     } catch (error) {
@@ -419,30 +426,20 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
               _userSafeError(
                 error,
                 'Не удалось отправить заявку. Проверьте интернет и повторите.',
+                'Өтінімді жіберу мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
               ),
             ),
           ),
         );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isUpdatingAcceptingOrders = false;
-        });
-      }
+      if (mounted) setState(() => _isUpdatingAcceptingOrders = false);
     }
   }
 
   void _onTabSelected(RestaurantBottomBarTab tab) {
-    if (_currentTab == tab) return;
-    if (!_visibleTabs.contains(tab)) return;
-
-    setState(() {
-      _currentTab = tab;
-    });
-
-    if (tab == RestaurantBottomBarTab.orders) {
-      _refreshActiveOrders();
-    }
+    if (_currentTab == tab || !_visibleTabs.contains(tab)) return;
+    setState(() => _currentTab = tab);
+    if (tab == RestaurantBottomBarTab.orders) _refreshActiveOrders();
     unawaited(_loadRestaurant());
   }
 
@@ -461,16 +458,28 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       case RestaurantBottomBarTab.finance:
         if (_cmsBootstrap?.featureEnabled('FINANCE_VIEW_ENABLED') == false) {
           return _FeatureUnavailable(
-            title: 'Финансы временно недоступны',
-            reason: _cmsBootstrap?.featureReason('FINANCE_VIEW_ENABLED'),
+            title: _t(
+              'Финансы временно недоступны',
+              'Қаржы бөлімі уақытша қолжетімсіз',
+            ),
+            reason: _cmsBootstrap?.featureReason(
+              'FINANCE_VIEW_ENABLED',
+              kazakh: context.isKazakh,
+            ),
           );
         }
         return const RestaurantFinancePage();
       case RestaurantBottomBarTab.support:
         if (_cmsBootstrap?.featureEnabled('SUPPORT_ENABLED') == false) {
           return _FeatureUnavailable(
-            title: 'Поддержка временно недоступна',
-            reason: _cmsBootstrap?.featureReason('SUPPORT_ENABLED'),
+            title: _t(
+              'Поддержка временно недоступна',
+              'Қолдау уақытша қолжетімсіз',
+            ),
+            reason: _cmsBootstrap?.featureReason(
+              'SUPPORT_ENABLED',
+              kazakh: context.isKazakh,
+            ),
           );
         }
         return const RestaurantSupportPage();
@@ -481,11 +490,15 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   Widget build(BuildContext context) {
     final profile = _restaurantProfile;
     final maintenance = _cmsBootstrap?.maintenance;
+    final title = context.isKazakh ? maintenance?.titleKk : maintenance?.titleRu;
+    final body = context.isKazakh ? maintenance?.bodyKk : maintenance?.bodyRu;
+    final fallbackTitle = context.isKazakh ? maintenance?.titleRu : maintenance?.titleKk;
+    final fallbackBody = context.isKazakh ? maintenance?.bodyRu : maintenance?.bodyKk;
 
     if (maintenance?.blocksApp == true) {
       return _MaintenanceGate(
-        title: maintenance?.titleRu,
-        body: maintenance?.bodyRu,
+        title: _firstNonEmpty(title, fallbackTitle),
+        body: _firstNonEmpty(body, fallbackBody),
         onRetry: _loadRestaurant,
         onSupport: _openSupportDuringMaintenance,
         onLogout: _logout,
@@ -502,8 +515,8 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
           children: [
             if (maintenance?.isSoft == true)
               _SoftMaintenanceBanner(
-                title: maintenance?.titleRu,
-                body: maintenance?.bodyRu,
+                title: _firstNonEmpty(title, fallbackTitle),
+                body: _firstNonEmpty(body, fallbackBody),
               ),
             if (profile != null && _canManageRestaurant)
               RestaurantOperationalBanner(
@@ -524,6 +537,13 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         onTabSelected: _onTabSelected,
       ),
     );
+  }
+
+  String? _firstNonEmpty(String? primary, String? fallback) {
+    final first = primary?.trim();
+    if (first != null && first.isNotEmpty) return first;
+    final second = fallback?.trim();
+    return second == null || second.isEmpty ? null : second;
   }
 }
 
@@ -564,7 +584,7 @@ class _MaintenanceGate extends StatelessWidget {
                 Text(
                   (title ?? '').trim().isNotEmpty
                       ? title!.trim()
-                      : 'Технические работы',
+                      : context.tr('Технические работы', 'Техникалық жұмыстар'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
@@ -576,7 +596,10 @@ class _MaintenanceGate extends StatelessWidget {
                 Text(
                   (body ?? '').trim().isNotEmpty
                       ? body!.trim()
-                      : 'Приложение временно недоступно. Попробуйте ещё раз позже.',
+                      : context.tr(
+                          'Приложение временно недоступно. Попробуйте ещё раз позже.',
+                          'Қосымша уақытша қолжетімсіз. Кейінірек қайталап көріңіз.',
+                        ),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFFB4BECC),
@@ -588,7 +611,7 @@ class _MaintenanceGate extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: onRetry,
-                    child: const Text('Проверить снова'),
+                    child: Text(context.tr('Проверить снова', 'Қайта тексеру')),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -597,7 +620,9 @@ class _MaintenanceGate extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onSupport,
                     icon: const Icon(Icons.support_agent_rounded),
-                    label: const Text('Открыть поддержку'),
+                    label: Text(
+                      context.tr('Открыть поддержку', 'Қолдауды ашу'),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -610,7 +635,9 @@ class _MaintenanceGate extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.logout_rounded),
-                  label: const Text('Выйти из аккаунта'),
+                  label: Text(
+                    context.tr('Выйти из аккаунта', 'Аккаунттан шығу'),
+                  ),
                 ),
               ],
             ),
@@ -629,6 +656,12 @@ class _SoftMaintenanceBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final message = <String?>[title, body]
+        .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .join(' · ');
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 2),
@@ -639,11 +672,12 @@ class _SoftMaintenanceBanner extends StatelessWidget {
         border: Border.all(color: const Color(0xFF6B5315)),
       ),
       child: Text(
-        [title, body]
-            .whereType<String>()
-            .map((value) => value.trim())
-            .where((value) => value.isNotEmpty)
-            .join(' · '),
+        message.isEmpty
+            ? context.tr(
+                'Возможны временные ограничения в работе приложения.',
+                'Қосымша жұмысында уақытша шектеулер болуы мүмкін.',
+              )
+            : message,
         style: const TextStyle(color: Color(0xFFF7E5A5), fontSize: 12),
       ),
     );
