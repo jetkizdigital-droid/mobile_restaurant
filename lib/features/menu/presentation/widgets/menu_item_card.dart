@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/core/config/app_config.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
+
 import '../../domain/restaurant_menu_models.dart';
 
 class MenuItemCard extends StatelessWidget {
@@ -20,39 +22,36 @@ class MenuItemCard extends StatelessWidget {
 
   String _resolveImage() {
     try {
-      final main = item.images.firstWhere((e) => e.isMain);
+      final main = item.images.firstWhere((image) => image.isMain);
       if (main.url.trim().isNotEmpty) return main.url.trim();
     } catch (_) {}
-
     return (item.imageUrl ?? '').trim();
   }
 
   String _toFullImageUrl(String url) {
     if (url.isEmpty) return '';
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
     return '${AppConfig.baseUrl}$url';
+  }
+
+  String _title(BuildContext context) {
+    final primary = context.isKazakh ? item.titleKk : item.titleRu;
+    final fallback = context.isKazakh ? item.titleRu : item.titleKk;
+    if (primary.trim().isNotEmpty) return primary.trim();
+    if (fallback.trim().isNotEmpty) return fallback.trim();
+    return context.tr('Блюдо', 'Тағам');
   }
 
   @override
   Widget build(BuildContext context) {
-    final rawImageUrl = _resolveImage();
-    final imageUrl = _toFullImageUrl(rawImageUrl);
-    final hasImage = imageUrl.isNotEmpty;
-
+    final imageUrl = _toFullImageUrl(_resolveImage());
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF1A2438), Color(0xFF0F172A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFF25324A),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFF25324A)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -64,7 +63,7 @@ class MenuItemCard extends StatelessWidget {
                 width: 80,
                 height: 80,
                 color: const Color(0xFF111827),
-                child: hasImage
+                child: imageUrl.isNotEmpty
                     ? Image.network(
                         imageUrl,
                         fit: BoxFit.cover,
@@ -76,7 +75,7 @@ class MenuItemCard extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: SizedBox(
-                height: 80,
+                height: 82,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -88,7 +87,7 @@ class MenuItemCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item.titleRu,
+                                _title(context),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -100,39 +99,54 @@ class MenuItemCard extends StatelessWidget {
                               const SizedBox(height: 2),
                               Text(
                                 (item.description ?? '').trim().isEmpty
-                                    ? 'Описание отсутствует'
+                                    ? context.tr(
+                                        'Описание отсутствует',
+                                        'Сипаттама жоқ',
+                                      )
                                     : item.description!.trim(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Color(0xFF8FA1BC),
                                   fontSize: 11,
-                                  height: 1.2,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: onToggleAvailability,
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: item.isAvailable
-                                  ? const Color(0xFF4B9E2F).withOpacity(0.18)
-                                  : const Color(0xFF374151),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              item.isAvailable
-                                  ? Icons.power_settings_new
-                                  : Icons.power_off,
-                              size: 16,
-                              color: item.isAvailable
-                                  ? const Color(0xFF67D33D)
-                                  : const Color(0xFF6B7280),
+                        Semantics(
+                          button: true,
+                          label: item.isAvailable
+                              ? context.tr(
+                                  'Убрать блюдо из доступных',
+                                  'Тағамды қолжетімді тізімнен алып тастау',
+                                )
+                              : context.tr(
+                                  'Сделать блюдо доступным',
+                                  'Тағамды қолжетімді ету',
+                                ),
+                          child: GestureDetector(
+                            onTap: onToggleAvailability,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: item.isAvailable
+                                    ? const Color(0xFF4B9E2F)
+                                        .withValues(alpha: 0.18)
+                                    : const Color(0xFF374151),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                item.isAvailable
+                                    ? Icons.power_settings_new
+                                    : Icons.power_off,
+                                size: 16,
+                                color: item.isAvailable
+                                    ? const Color(0xFF67D33D)
+                                    : const Color(0xFF6B7280),
+                              ),
                             ),
                           ),
                         ),
@@ -173,16 +187,18 @@ class MenuItemCard extends StatelessWidget {
                         ),
                         const Spacer(),
                         _CircleActionButton(
+                          tooltip: context.tr('Изменить', 'Өзгерту'),
                           icon: Icons.edit,
-                          bg: const Color(0xFF2563EB).withOpacity(0.18),
-                          color: const Color(0xFF60A5FA),
+                          background: const Color(0x332563EB),
+                          foreground: const Color(0xFF60A5FA),
                           onTap: onEdit,
                         ),
                         const SizedBox(width: 6),
                         _CircleActionButton(
+                          tooltip: context.tr('Удалить', 'Жою'),
                           icon: Icons.delete_outline,
-                          bg: const Color(0xFFDC2626).withOpacity(0.18),
-                          color: const Color(0xFFF87171),
+                          background: const Color(0x33DC2626),
+                          foreground: const Color(0xFFF87171),
                           onTap: onDelete,
                         ),
                       ],
@@ -200,29 +216,35 @@ class MenuItemCard extends StatelessWidget {
 
 class _CircleActionButton extends StatelessWidget {
   const _CircleActionButton({
+    required this.tooltip,
     required this.icon,
-    required this.bg,
-    required this.color,
+    required this.background,
+    required this.foreground,
     required this.onTap,
   });
 
+  final String tooltip;
   final IconData icon;
-  final Color bg;
-  final Color color;
+  final Color background;
+  final Color foreground;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(10),
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 15, color: foreground),
         ),
-        child: Icon(icon, size: 15, color: color),
       ),
     );
   }
