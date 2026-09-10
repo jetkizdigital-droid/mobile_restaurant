@@ -1,33 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 
 import 'restaurant_auth_page.dart';
 import 'restaurant_staff_password_page.dart';
 
-class RestaurantAccessChoicePage extends StatefulWidget {
+class RestaurantAccessChoicePage extends StatelessWidget {
   const RestaurantAccessChoicePage({super.key});
 
-  @override
-  State<RestaurantAccessChoicePage> createState() =>
-      _RestaurantAccessChoicePageState();
-}
-
-class _RestaurantAccessChoicePageState extends State<RestaurantAccessChoicePage> {
-  bool _kazakh = false;
-
-  String _t(String ru, String kk) => _kazakh ? kk : ru;
-
-  void _openOwnerFlow() {
+  void _openOwnerFlow(BuildContext context) {
     Navigator.of(context).push(
       AppPageRoute<void>(page: const RestaurantAuthPage()),
     );
   }
 
-  void _openStaffFlow() {
+  void _openStaffFlow(BuildContext context) {
     Navigator.of(context).push(
       AppPageRoute<void>(
         page: RestaurantStaffPasswordPage(
-          initialLanguageCode: _kazakh ? 'kk' : 'ru',
+          initialLanguageCode: AppLocaleController.instance.languageCode,
         ),
       ),
     );
@@ -35,6 +26,8 @@ class _RestaurantAccessChoicePageState extends State<RestaurantAccessChoicePage>
 
   @override
   Widget build(BuildContext context) {
+    final locale = AppLocaleController.instance;
+
     return Scaffold(
       backgroundColor: const Color(0xFF09111C),
       body: SafeArea(
@@ -49,9 +42,9 @@ class _RestaurantAccessChoicePageState extends State<RestaurantAccessChoicePage>
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () => setState(() => _kazakh = !_kazakh),
+                      onPressed: locale.toggle,
                       child: Text(
-                        _kazakh ? 'RU' : 'ҚАЗ',
+                        context.isKazakh ? 'RU' : 'ҚАЗ',
                         style: const TextStyle(
                           color: Color(0xFF65C044),
                           fontWeight: FontWeight.w900,
@@ -78,9 +71,9 @@ class _RestaurantAccessChoicePageState extends State<RestaurantAccessChoicePage>
                     ),
                   ),
                   const SizedBox(height: 22),
-                  Text(
+                  const Text(
                     'JETKIZ Restaurant',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 30,
                       fontWeight: FontWeight.w900,
@@ -88,7 +81,7 @@ class _RestaurantAccessChoicePageState extends State<RestaurantAccessChoicePage>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _t(
+                    context.tr(
                       'Выберите способ входа в кабинет ресторана.',
                       'Мейрамхана кабинетіне кіру тәсілін таңдаңыз.',
                     ),
@@ -101,24 +94,30 @@ class _RestaurantAccessChoicePageState extends State<RestaurantAccessChoicePage>
                   const SizedBox(height: 32),
                   _AccessCard(
                     icon: Icons.storefront_outlined,
-                    title: _t('Владелец ресторана', 'Мейрамхана иесі'),
-                    description: _t(
+                    title: context.tr('Владелец ресторана', 'Мейрамхана иесі'),
+                    description: context.tr(
                       'Вход по номеру телефона и коду подтверждения. Здесь же регистрация ресторана.',
                       'Телефон нөмірі және растау коды арқылы кіру. Мейрамхананы тіркеу де осында.',
                     ),
-                    buttonText: _t('Войти или зарегистрироваться', 'Кіру немесе тіркелу'),
-                    onPressed: _openOwnerFlow,
+                    buttonText: context.tr(
+                      'Войти или зарегистрироваться',
+                      'Кіру немесе тіркелу',
+                    ),
+                    onPressed: () => _openOwnerFlow(context),
                   ),
                   const SizedBox(height: 14),
                   _AccessCard(
                     icon: Icons.badge_outlined,
-                    title: _t('Сотрудник', 'Қызметкер'),
-                    description: _t(
+                    title: context.tr('Сотрудник', 'Қызметкер'),
+                    description: context.tr(
                       'Вход по телефону и паролю, который выдал владелец ресторана.',
                       'Мейрамхана иесі берген телефон мен құпиясөз арқылы кіру.',
                     ),
-                    buttonText: _t('Войти как сотрудник', 'Қызметкер ретінде кіру'),
-                    onPressed: _openStaffFlow,
+                    buttonText: context.tr(
+                      'Войти как сотрудник',
+                      'Қызметкер ретінде кіру',
+                    ),
+                    onPressed: () => _openStaffFlow(context),
                   ),
                 ],
               ),
