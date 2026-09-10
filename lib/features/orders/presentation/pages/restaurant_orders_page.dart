@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
+import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_sync_bus.dart';
 import 'package:jetkiz_restaurant/features/orders/presentation/pages/restaurant_order_details_page.dart';
 
 class RestaurantOrdersPage extends StatefulWidget {
@@ -20,8 +21,11 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
   late final AnimationController _blinkController;
   StreamSubscription<void>? _pushRefreshSubscription;
+  StreamSubscription<void>? _fallbackRefreshSubscription;
 
   bool _isLoading = true;
+  bool _silentRefreshInFlight = false;
+  int _loadGeneration = 0;
   String? _error;
 
   List<Map<String, dynamic>> _allOrders = <Map<String, dynamic>>[];
@@ -57,7 +61,9 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     _pushRefreshSubscription = RestaurantPushNotificationService
         .instance
         .ordersRefreshEvents
-        .listen((_) => unawaited(_loadOrders()));
+        .listen((_) => unawaited(_loadOrders(silent: true)));
+    _fallbackRefreshSubscription = RestaurantOrdersSyncBus.instance.events
+        .listen((_) => unawaited(_loadOrders(silent: true)));
 
     _loadOrders();
   }
@@ -65,6 +71,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   @override
   void dispose() {
     _pushRefreshSubscription?.cancel();
+    _fallbackRefreshSubscription?.cancel();
     for (final timer in _pendingReadyTimers.values) {
       timer.cancel();
     }
@@ -73,42 +80,74 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     super.dispose();
   }
 
-  Future<void> _loadOrders() async {
-    try {
-      if (mounted) {
-        setState(() {
-          _isLoading = true;
-          _error = null;
-        });
-      }
+  Future<void> _loadOrders({bool silent = false}) async {
+    if (silent && _silentRefreshInFlight) return;
 
+    final generation = ++_loadGeneration;
+    final requestedStatus = _selectedStatus;
+
+    if (silent) {
+      _silentRefreshInFlight = true;
+    } else if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
+
+    try {
       final result = await _ordersApi.getOrders(
-        status: _selectedStatus == 'ALL' ? null : _selectedStatus,
+        status: requestedStatus == 'ALL' ? null : requestedStatus,
       );
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _allOrders = result;
         _applyFilter();
         _isLoading = false;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
+
+      if (silent) {
+        debugPrint('Restaurant orders silent refresh failed: $e');
+        return;
+      }
 
       setState(() {
         _error = _cleanError(e);
         _isLoading = false;
       });
+    } finally {
+      if (silent) {
+        _silentRefreshInFlight = false;
+      }
     }
   }
 
   Future<void> _refresh() async {
-    await _loadOrders();
+    await _loadOrders(silent: true);
   }
 
   String _cleanError(Object error) {
-    return error.toString().replaceFirst('Exception: ', '').trim();
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 220 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('api') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http 4') ||
+        lower.contains('http 5')) {
+      return 'Не удалось загрузить заказы. Проверьте интернет и повторите.';
+    }
+    return raw;
   }
 
   void _applyFilter() {
@@ -135,7 +174,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     final orderId = _string(order['id']);
 
     if (orderId.isEmpty) {
-      _showSnackBar('Некорректный ID заказа');
+      _showSnackBar('Не удалось определить заказ. Обновите список и повторите.');
       return;
     }
 
@@ -146,7 +185,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     );
 
     if (!mounted) return;
-    await _loadOrders();
+    await _loadOrders(silent: true);
   }
 
   Future<void> _changeStatus(
@@ -158,7 +197,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     final orderId = _string(order['id']);
 
     if (orderId.isEmpty) {
-      _showSnackBar('Некорректный ID заказа');
+      _showSnackBar('Не удалось определить заказ. Обновите список и повторите.');
       return;
     }
 
