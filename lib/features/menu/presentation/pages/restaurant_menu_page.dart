@@ -359,7 +359,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
       backgroundColor: const Color(0xFF020817),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 99, right: 4),
+        padding: const EdgeInsets.only(bottom: 16, right: 4),
         child: FloatingActionButton(
           onPressed: _openCreateActions,
           elevation: 0,

@@ -7,13 +7,11 @@ class RestaurantProfileAccessPage extends StatelessWidget {
   const RestaurantProfileAccessPage({
     super.key,
     required this.isOwner,
-    required this.onLogout,
-    this.loggingOut = false,
+    this.onBranchChanged,
   });
 
   final bool isOwner;
-  final Future<void> Function() onLogout;
-  final bool loggingOut;
+  final Future<void> Function(String restaurantId)? onBranchChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -131,42 +129,15 @@ class RestaurantProfileAccessPage extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: loggingOut
-                        ? null
-                        : () {
-                            onLogout();
-                          },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFCBD5E1),
-                      side: const BorderSide(color: Color(0xFF26374F)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    icon: loggingOut
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.swap_horiz_rounded, size: 20),
-                    label: Text(
-                      context.tr('Сменить аккаунт', 'Аккаунтты ауыстыру'),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
         ),
-        const Expanded(
-          child: RestaurantProfilePage(hideBottomBar: true),
+        Expanded(
+          child: RestaurantProfilePage(
+            hideBottomBar: true,
+            onBranchChanged: onBranchChanged,
+          ),
         ),
       ],
     );
