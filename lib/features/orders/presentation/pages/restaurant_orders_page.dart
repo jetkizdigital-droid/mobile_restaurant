@@ -72,10 +72,9 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   void dispose() {
     _pushRefreshSubscription?.cancel();
     _fallbackRefreshSubscription?.cancel();
-    for (final timer in _pendingReadyTimers.values) {
-      timer.cancel();
-    }
-    _pendingReadyTimers.clear();
+    // READY confirmation timers intentionally survive this page's lifecycle.
+    // A restaurant may leave the Orders tab during the 5-second undo window;
+    // the confirmed transition still has to reach the server unless undone.
     _blinkController.dispose();
     super.dispose();
   }
@@ -418,34 +417,46 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   }
 
   Future<void> _confirmReady(Map<String, dynamic> order) async {
+    // Only one order may be inside the short undo window at a time. This keeps
+    // the undo action visible and prevents a second SnackBar from making the
+    // first READY transition impossible to cancel.
+    if (_pendingReadyOrderIds.isNotEmpty) return;
+
     final isPickup = _isPickup(order);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF111827),
         title: Text(
-          isPickup ? 'Заказ готов к выдаче?' : 'Заказ готов?',
+          isPickup
+              ? _t('Заказ готов к выдаче?', 'Тапсырыс беруге дайын ба?')
+              : _t('Заказ готов?', 'Тапсырыс дайын ба?'),
           style: const TextStyle(color: Colors.white),
         ),
         content: Text(
           isPickup
-              ? 'После подтверждения клиент увидит, что заказ можно забирать.'
-              : 'После подтверждения JETKIZ сможет начать назначение курьера. Проверьте, что заказ действительно готов.',
+              ? _t(
+                  'После подтверждения клиент увидит, что заказ можно забирать.',
+                  'Растағаннан кейін клиент тапсырысты алып кетуге болатынын көреді.',
+                )
+              : _t(
+                  'После подтверждения JETKIZ сможет начать назначение курьера. Проверьте, что заказ действительно готов.',
+                  'Растағаннан кейін JETKIZ курьер тағайындауды бастай алады. Тапсырыстың шынымен дайын екенін тексеріңіз.',
+                ),
           style: const TextStyle(color: Color(0xFFCBD5E1)),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Назад'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_t('Назад', 'Артқа')),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Да, готов'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_t('Да, готов', 'Иә, дайын')),
           ),
         ],
       ),
     );
-
     if (confirmed != true || !mounted) return;
 
     final orderId = _orderId(order);
@@ -455,21 +466,18 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
       return;
     }
 
-    setState(() {
-      _pendingReadyOrderIds.add(orderId);
-    });
-
+    setState(() => _pendingReadyOrderIds.add(orderId));
     var canceled = false;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
 
     final timer = Timer(const Duration(seconds: 5), () {
       _pendingReadyTimers.remove(orderId);
-      if (!mounted || canceled) return;
-      setState(() {
-        _pendingReadyOrderIds.remove(orderId);
-      });
-      unawaited(_changeStatus(order, 'READY'));
+      _pendingReadyOrderIds.remove(orderId);
+      if (canceled) {
+        if (mounted) setState(() {});
+        return;
+      }
+      unawaited(_commitReady(order, orderId));
     });
     _pendingReadyTimers[orderId] = timer;
 
@@ -478,23 +486,66 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
         duration: const Duration(seconds: 5),
         content: Text(
           isPickup
-              ? 'Заказ будет отмечен готовым к выдаче'
-              : 'Заказ будет отмечен готовым',
+              ? _t(
+                  'Заказ будет отмечен готовым к выдаче',
+                  'Тапсырыс беруге дайын деп белгіленеді',
+                )
+              : _t(
+                  'Заказ будет отмечен готовым',
+                  'Тапсырыс дайын деп белгіленеді',
+                ),
         ),
         action: SnackBarAction(
-          label: 'Отменить действие',
+          label: _t('Отменить действие', 'Әрекетті болдырмау'),
           onPressed: () {
             canceled = true;
             _pendingReadyTimers.remove(orderId)?.cancel();
+            _pendingReadyOrderIds.remove(orderId);
             if (!mounted) return;
-            setState(() {
-              _pendingReadyOrderIds.remove(orderId);
-            });
-            _showSnackBar('Действие отменено');
+            setState(() {});
+            _showSnackBar(_t('Действие отменено', 'Әрекет болдырылмады'));
           },
         ),
       ),
     );
+  }
+
+  Future<void> _commitReady(
+    Map<String, dynamic> order,
+    String orderId,
+  ) async {
+    _updatingOrderIds.add(orderId);
+    if (mounted) setState(() {});
+
+    try {
+      final updated = await _ordersApi.updateOrderStatus(
+        id: orderId,
+        status: 'READY',
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _allOrders = _allOrders.map((item) {
+          return _orderId(item) == orderId ? updated : item;
+        }).toList();
+        _applyFilter();
+      });
+      _showSnackBar(
+        _statusChangedMessage('READY', isPickup: _isPickup(order)),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showSnackBar(
+        _safeError(
+          error,
+          'Не удалось отметить заказ готовым. Попробуйте ещё раз.',
+          'Тапсырысты дайын деп белгілеу мүмкін болмады. Қайта көріңіз.',
+        ),
+      );
+    } finally {
+      _updatingOrderIds.remove(orderId);
+      if (mounted) setState(() {});
+    }
   }
 
   String _statusChangedMessage(String status, {required bool isPickup}) {
