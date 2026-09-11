@@ -363,11 +363,18 @@ class _RestaurantStaffManagementPageState
                   icon: const Icon(Icons.edit_outlined),
                   label: Text(_t('Изменить', 'Өзгерту')),
                 ),
-                if (active && id.isNotEmpty)
+                if (active &&
+                    id.isNotEmpty &&
+                    employee['mustChangePassword'] == true)
                   OutlinedButton.icon(
                     onPressed: () => _resetPassword(id),
                     icon: const Icon(Icons.password_rounded),
-                    label: Text(_t('Новый пароль', 'Жаңа құпиясөз')),
+                    label: Text(
+                      _t(
+                        'Новый временный пароль',
+                        'Жаңа уақытша құпиясөз',
+                      ),
+                    ),
                   ),
                 if (active)
                   OutlinedButton.icon(
