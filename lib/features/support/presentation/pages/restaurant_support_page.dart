@@ -27,7 +27,6 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   int _unreadCount = 0;
   bool _loading = true;
   bool _requestingDeletion = false;
-  bool _loadFailed = false;
 
   @override
   void initState() {
@@ -36,31 +35,30 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadFailed = false;
-    });
+    if (mounted) setState(() => _loading = true);
+
+    var bootstrap = RestaurantAppCmsSession.instance.state.value;
+    var unreadCount = _unreadCount;
 
     try {
-      final results = await Future.wait<dynamic>([
-        RestaurantAppCmsSession.instance.refresh(),
-        _notificationsApi.getUnreadCount(),
-      ]);
-
-      if (!mounted) return;
-      setState(() {
-        _bootstrap = results[0] as RestaurantAppBootstrap;
-        _unreadCount = results[1] as int;
-        _loading = false;
-      });
+      bootstrap = await RestaurantAppCmsSession.instance.refresh();
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _bootstrap = RestaurantAppCmsSession.instance.state.value;
-        _loadFailed = true;
-        _loading = false;
-      });
+      // Support must remain usable even when optional CMS configuration
+      // cannot be refreshed. Keep the last known configuration silently.
     }
+
+    try {
+      unreadCount = await _notificationsApi.getUnreadCount();
+    } catch (_) {
+      // A notification-count failure must not turn Support into an error page.
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _bootstrap = bootstrap;
+      _unreadCount = unreadCount;
+      _loading = false;
+    });
   }
 
   String? _localizedValue(String? ru, String? kk) {
@@ -205,18 +203,6 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 18),
                 child: LinearProgressIndicator(color: Color(0xFF489F2A)),
-              ),
-            if (_loadFailed)
-              _MessageCard(
-                icon: Icons.wifi_off_rounded,
-                title: context.tr(
-                  'Не удалось обновить информацию',
-                  'Ақпаратты жаңарту мүмкін болмады',
-                ),
-                body: context.tr(
-                  'Часть данных может быть устаревшей. Проверьте интернет и потяните экран вниз, чтобы повторить.',
-                  'Кейбір деректер ескірген болуы мүмкін. Интернетті тексеріп, қайталау үшін экранды төмен тартыңыз.',
-                ),
               ),
             if (emergencyText != null)
               _MessageCard(

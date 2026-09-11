@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/widgets/jetkiz_wordmark.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
@@ -879,15 +880,7 @@ class _OrdersHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
-                'jetkiz',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
+              const JetkizWordmark(height: 18),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(

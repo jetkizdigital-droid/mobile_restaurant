@@ -16,9 +16,14 @@ import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_
 import 'package:jetkiz_restaurant/features/restaurant_profile/widgets/restaurant_statistics_tab.dart';
 
 class RestaurantProfilePage extends StatefulWidget {
-  const RestaurantProfilePage({super.key, this.hideBottomBar = false});
+  const RestaurantProfilePage({
+    super.key,
+    this.hideBottomBar = false,
+    this.onBranchChanged,
+  });
 
   final bool hideBottomBar;
+  final Future<void> Function(String restaurantId)? onBranchChanged;
 
   @override
   State<RestaurantProfilePage> createState() => _RestaurantProfilePageState();
@@ -206,6 +211,12 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   Future<void> _selectBranch(_RestaurantBranch branch) async {
     if (_selectedRestaurantId == branch.id) return;
     try {
+      final onBranchChanged = widget.onBranchChanged;
+      if (onBranchChanged != null) {
+        await onBranchChanged(branch.id);
+        return;
+      }
+
       await ApiClient.instance.setSelectedRestaurantId(branch.id);
       if (!mounted) return;
       setState(() {
