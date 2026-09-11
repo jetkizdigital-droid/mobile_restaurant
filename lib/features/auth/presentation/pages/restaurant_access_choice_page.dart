@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/widgets/jetkiz_wordmark.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 
@@ -54,25 +55,20 @@ class RestaurantAccessChoicePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 22),
                   Container(
-                    width: 66,
+                    width: 110,
                     height: 66,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF65C044),
+                      color: const Color(0xFF111827),
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF26374F)),
                     ),
                     alignment: Alignment.center,
-                    child: const Text(
-                      'jetkiz',
-                      style: TextStyle(
-                        color: Color(0xFF061004),
-                        fontWeight: FontWeight.w900,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
+                    child: const JetkizWordmark(height: 34),
                   ),
                   const SizedBox(height: 22),
                   const Text(
-                    'JETKIZ Restaurant',
+                    'Jetkiz Ресторан',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 30,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/widgets/jetkiz_wordmark.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/session/restaurant_context.dart';
 import 'package:jetkiz_restaurant/core/session/session_manager.dart';
@@ -359,7 +360,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
       backgroundColor: const Color(0xFF020817),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 99, right: 4),
+        padding: const EdgeInsets.only(bottom: 16, right: 4),
         child: FloatingActionButton(
           onPressed: _openCreateActions,
           elevation: 0,
@@ -530,15 +531,7 @@ class _MenuHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
-                'jetkiz',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
+              const JetkizWordmark(height: 18),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(

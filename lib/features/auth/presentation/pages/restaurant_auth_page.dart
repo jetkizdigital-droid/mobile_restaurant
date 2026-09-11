@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:jetkiz_restaurant/core/input/kazakhstan_phone_input.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -38,66 +40,14 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
     super.dispose();
   }
 
-  String _formatPhone(String value) {
-    final digits = value.replaceAll(RegExp(r'\D'), '');
-    var normalized = digits;
-    if (normalized.startsWith('8')) {
-      normalized = '7${normalized.substring(1)}';
-    }
-    if (!normalized.startsWith('7') && normalized.isNotEmpty) {
-      normalized = '7$normalized';
-    }
-    if (normalized.length > 11) normalized = normalized.substring(0, 11);
+  String _normalizePhone(String value) => normalizeKazakhstanPhone(value);
 
-    final buffer = StringBuffer('+7');
-    if (normalized.length > 1) {
-      final end = normalized.length >= 4 ? 4 : normalized.length;
-      buffer.write(' (${normalized.substring(1, end)}');
-    }
-    if (normalized.length >= 4) buffer.write(')');
-    if (normalized.length >= 5) {
-      final end = normalized.length >= 7 ? 7 : normalized.length;
-      buffer.write(' ${normalized.substring(4, end)}');
-    }
-    if (normalized.length >= 8) {
-      final end = normalized.length >= 9 ? 9 : normalized.length;
-      buffer.write('-${normalized.substring(7, end)}');
-    }
-    if (normalized.length >= 10) {
-      final end = normalized.length >= 11 ? 11 : normalized.length;
-      buffer.write('-${normalized.substring(9, end)}');
-    }
-    return buffer.toString();
-  }
-
-  String _normalizePhone(String value) {
-    final digits = value.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return '';
-    var normalized = digits;
-    if (normalized.startsWith('8')) {
-      normalized = '7${normalized.substring(1)}';
-    }
-    if (!normalized.startsWith('7')) normalized = '7$normalized';
-    if (normalized.length > 11) normalized = normalized.substring(0, 11);
-    return '+$normalized';
-  }
-
-  bool _isValidPhone(String value) {
-    return RegExp(r'^\+7\d{10}$').hasMatch(_normalizePhone(value));
-  }
+  bool _isValidPhone(String value) => _normalizePhone(value).isNotEmpty;
 
   String _formatTime(TimeOfDay time) {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
-  }
-
-  void _onPhoneChanged(TextEditingController controller, String raw) {
-    final formatted = _formatPhone(raw);
-    controller.value = TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
   }
 
   String _safeError(Object error, String ru, String kk) {
@@ -403,10 +353,11 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _loginPhoneController,
-          hintText: '+7 (___) ___-__-__',
+          hintText: '777 000 00 00',
           keyboardType: TextInputType.phone,
           prefixIcon: Icons.phone_outlined,
-          onChanged: (value) => _onPhoneChanged(_loginPhoneController, value),
+          prefixText: '+7 ',
+          inputFormatters: const [KazakhstanPhoneInputFormatter()],
         ),
         const SizedBox(height: 18),
         _GreenButton(
@@ -445,10 +396,11 @@ class _RestaurantAuthPageState extends State<RestaurantAuthPage> {
         const SizedBox(height: 8),
         _DarkTextField(
           controller: _registerPhoneController,
-          hintText: '+7 (___) ___-__-__',
+          hintText: '777 000 00 00',
           keyboardType: TextInputType.phone,
           prefixIcon: Icons.phone_outlined,
-          onChanged: (value) => _onPhoneChanged(_registerPhoneController, value),
+          prefixText: '+7 ',
+          inputFormatters: const [KazakhstanPhoneInputFormatter()],
         ),
         const SizedBox(height: 14),
         _FieldLabel(context.tr('Название на русском', 'Орысша атауы')),
@@ -698,6 +650,8 @@ class _DarkTextField extends StatelessWidget {
     required this.prefixIcon,
     this.keyboardType,
     this.onChanged,
+    this.prefixText,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
@@ -705,6 +659,8 @@ class _DarkTextField extends StatelessWidget {
   final IconData prefixIcon;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onChanged;
+  final String? prefixText;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -719,12 +675,19 @@ class _DarkTextField extends StatelessWidget {
         controller: controller,
         onChanged: onChanged,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         style: const TextStyle(color: Colors.white, fontSize: 14),
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hintText,
           hintStyle: const TextStyle(color: Color(0xFF6F7D91)),
           prefixIcon: Icon(prefixIcon, color: const Color(0xFF8E9AAF)),
+          prefixText: prefixText,
+          prefixStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
           contentPadding: const EdgeInsets.symmetric(vertical: 15),
         ),
       ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:jetkiz_restaurant/core/input/kazakhstan_phone_input.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
@@ -46,26 +48,9 @@ class _RestaurantStaffPasswordPageState
     super.dispose();
   }
 
-  String _normalizePhone(String value) {
-    final digits = value.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return '';
+  String _normalizePhone(String value) => normalizeKazakhstanPhone(value);
 
-    var normalized = digits;
-    if (normalized.startsWith('8')) {
-      normalized = '7${normalized.substring(1)}';
-    }
-    if (!normalized.startsWith('7')) {
-      normalized = '7$normalized';
-    }
-    if (normalized.length > 11) {
-      normalized = normalized.substring(0, 11);
-    }
-    return '+$normalized';
-  }
-
-  bool _validPhone(String value) {
-    return RegExp(r'^\+7\d{10}$').hasMatch(_normalizePhone(value));
-  }
+  bool _validPhone(String value) => _normalizePhone(value).isNotEmpty;
 
   String _friendlyError(Object error, String fallbackRu, String fallbackKk) {
     final raw = error.toString().replaceFirst('Exception: ', '').trim();
@@ -314,9 +299,11 @@ class _RestaurantStaffPasswordPageState
         _field(
           controller: _phoneController,
           label: _t('Телефон', 'Телефон'),
-          hint: '+7 700 000 00 00',
+          hint: '777 000 00 00',
           keyboardType: TextInputType.phone,
           icon: Icons.phone_outlined,
+          prefixText: '+7 ',
+          inputFormatters: const [KazakhstanPhoneInputFormatter()],
         ),
         const SizedBox(height: 16),
         _field(
@@ -440,6 +427,8 @@ class _RestaurantStaffPasswordPageState
     TextInputType? keyboardType,
     bool obscureText = false,
     Widget? suffix,
+    String? prefixText,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -455,6 +444,7 @@ class _RestaurantStaffPasswordPageState
         TextField(
           controller: controller,
           keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
           obscureText: obscureText,
           enabled: !_loading,
           style: const TextStyle(color: Colors.white),
@@ -462,6 +452,11 @@ class _RestaurantStaffPasswordPageState
             hintText: hint,
             hintStyle: const TextStyle(color: Color(0xFF667085)),
             prefixIcon: Icon(icon, color: const Color(0xFF95A0B3)),
+            prefixText: prefixText,
+            prefixStyle: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
             suffixIcon: suffix,
             filled: true,
             fillColor: const Color(0xFF111B2B),
