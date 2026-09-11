@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/core/config/app_config.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/reviews/data/restaurant_reviews_api.dart';
 import 'package:jetkiz_restaurant/features/reviews/domain/restaurant_review.dart';
-import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:video_player/video_player.dart';
 
 class RestaurantReviewsPage extends StatefulWidget {
   const RestaurantReviewsPage({
@@ -22,20 +23,44 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
   static const int _pageSize = 20;
 
   late final RestaurantReviewsApi _api;
-
   bool _isLoading = true;
   bool _isRefreshing = false;
   bool _isLoadingMore = false;
   String? _error;
-  List<RestaurantReview> _items = const [];
+  List<RestaurantReview> _items = const <RestaurantReview>[];
   ReviewsMeta _meta = const ReviewsMeta(page: 1, limit: _pageSize, total: 0);
   final Set<String> _mutatingReviewIds = <String>{};
+
+  String _t(String ru, String kk) => context.tr(ru, kk);
 
   @override
   void initState() {
     super.initState();
     _api = RestaurantReviewsApi(ApiClient.instance);
     _load();
+  }
+
+  String _safeError(Object error) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dio') ||
+        lower.contains('socket') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('api') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http') ||
+        lower.contains('некорректный ответ') ||
+        lower.contains('сервер не вернул')) {
+      return _t(
+        'Не удалось выполнить действие. Проверьте интернет и повторите.',
+        'Әрекетті орындау мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
+      );
+    }
+    return raw;
   }
 
   Future<void> _load({bool refresh = false}) async {
@@ -57,20 +82,15 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
         page: 1,
         limit: _pageSize,
       );
-
       if (!mounted) return;
-
       setState(() {
         _items = result.items;
         _meta = result.meta;
         _error = null;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-
-      setState(() {
-        _error = _cleanError(e);
-      });
+      setState(() => _error = _safeError(error));
     } finally {
       if (!mounted) return;
       setState(() {
@@ -82,20 +102,16 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
 
   Future<void> _loadMore() async {
     if (_isLoadingMore || !_meta.hasMore) return;
-
-    setState(() {
-      _isLoadingMore = true;
-    });
+    final nextPage = _meta.page + 1;
+    setState(() => _isLoadingMore = true);
 
     try {
       final result = await _api.getRestaurantReviews(
         restaurantId: widget.restaurantId,
-        page: _meta.page + 1,
+        page: nextPage,
         limit: _pageSize,
       );
-
       if (!mounted) return;
-
       final seen = _items.map((item) => item.id).toSet();
       setState(() {
         _items = <RestaurantReview>[
@@ -104,173 +120,138 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
         ];
         _meta = result.meta;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      _showMessage(_cleanError(e));
+      _showMessage(_safeError(error));
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingMore = false;
-        });
-      }
+      if (mounted) setState(() => _isLoadingMore = false);
     }
   }
 
   Future<void> _editResponse(RestaurantReview review) async {
     if (_mutatingReviewIds.contains(review.id)) return;
-
     final controller = TextEditingController(
       text: review.response?.text?.trim() ?? '',
     );
 
     final responseText = await showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            final canSave = controller.text.trim().isNotEmpty;
-
-            return AlertDialog(
-              backgroundColor: const Color(0xFF111827),
-              title: Text(
-                review.response == null
-                    ? 'Ответить на отзыв'
-                    : 'Изменить ответ',
-                style: const TextStyle(color: Colors.white),
-              ),
-              content: TextField(
-                controller: controller,
-                autofocus: true,
-                minLines: 3,
-                maxLines: 6,
-                maxLength: 2000,
-                onChanged: (_) => setDialogState(() {}),
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Напишите ответ клиенту',
-                  hintStyle: const TextStyle(color: Color(0xFF64748B)),
-                  filled: true,
-                  fillColor: const Color(0xFF0B1220),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF65C044)),
-                  ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final canSave = controller.text.trim().isNotEmpty;
+          return AlertDialog(
+            backgroundColor: const Color(0xFF111827),
+            title: Text(
+              review.response == null
+                  ? _t('Ответить на отзыв', 'Пікірге жауап беру')
+                  : _t('Изменить ответ', 'Жауапты өзгерту'),
+              style: const TextStyle(color: Colors.white),
+            ),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              maxLength: 2000,
+              onChanged: (_) => setDialogState(() {}),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: _t('Напишите ответ клиенту', 'Клиентке жауап жазыңыз'),
+                hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                filled: true,
+                fillColor: const Color(0xFF0B1220),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFF334155)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFF65C044)),
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Отмена'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(_t('Отмена', 'Бас тарту')),
+              ),
+              FilledButton(
+                onPressed: canSave
+                    ? () => Navigator.of(dialogContext).pop(controller.text.trim())
+                    : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF489F2A),
                 ),
-                FilledButton(
-                  onPressed: canSave
-                      ? () => Navigator.of(
-                            dialogContext,
-                          ).pop(controller.text.trim())
-                      : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF489F2A),
-                  ),
-                  child: const Text('Сохранить'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+                child: Text(_t('Сохранить', 'Сақтау')),
+              ),
+            ],
+          );
+        },
+      ),
     );
-
     controller.dispose();
 
-    if (responseText == null || responseText.trim().isEmpty || !mounted) {
-      return;
-    }
-
-    setState(() {
-      _mutatingReviewIds.add(review.id);
-    });
-
+    if (responseText == null || responseText.trim().isEmpty || !mounted) return;
+    setState(() => _mutatingReviewIds.add(review.id));
     try {
       await _api.saveResponse(reviewId: review.id, text: responseText);
       if (!mounted) return;
       _showMessage(
-        review.response == null ? 'Ответ опубликован' : 'Ответ обновлён',
+        review.response == null
+            ? _t('Ответ опубликован', 'Жауап жарияланды')
+            : _t('Ответ обновлён', 'Жауап жаңартылды'),
       );
       await _load(refresh: true);
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage(_cleanError(e));
+    } catch (error) {
+      if (mounted) _showMessage(_safeError(error));
     } finally {
-      if (mounted) {
-        setState(() {
-          _mutatingReviewIds.remove(review.id);
-        });
-      }
+      if (mounted) setState(() => _mutatingReviewIds.remove(review.id));
     }
   }
 
   Future<void> _deleteResponse(RestaurantReview review) async {
-    if (review.response == null || _mutatingReviewIds.contains(review.id)) {
-      return;
-    }
-
+    if (review.response == null || _mutatingReviewIds.contains(review.id)) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF111827),
-        title: const Text(
-          'Удалить ответ?',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          _t('Удалить ответ?', 'Жауапты жою керек пе?'),
+          style: const TextStyle(color: Colors.white),
         ),
-        content: const Text(
-          'Ответ ресторана будет удалён из отзыва.',
-          style: TextStyle(color: Color(0xFFCBD5E1)),
+        content: Text(
+          _t(
+            'Ответ ресторана будет удалён из отзыва.',
+            'Мейрамхананың жауабы пікірден жойылады.',
+          ),
+          style: const TextStyle(color: Color(0xFFCBD5E1)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Отмена'),
+            child: Text(_t('Отмена', 'Бас тарту')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-            ),
-            child: const Text('Удалить'),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            child: Text(_t('Удалить', 'Жою')),
           ),
         ],
       ),
     );
-
     if (confirmed != true || !mounted) return;
 
-    setState(() {
-      _mutatingReviewIds.add(review.id);
-    });
-
+    setState(() => _mutatingReviewIds.add(review.id));
     try {
       await _api.deleteResponse(reviewId: review.id);
       if (!mounted) return;
-      _showMessage('Ответ удалён');
+      _showMessage(_t('Ответ удалён', 'Жауап жойылды'));
       await _load(refresh: true);
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage(_cleanError(e));
+    } catch (error) {
+      if (mounted) _showMessage(_safeError(error));
     } finally {
-      if (mounted) {
-        setState(() {
-          _mutatingReviewIds.remove(review.id);
-        });
-      }
+      if (mounted) setState(() => _mutatingReviewIds.remove(review.id));
     }
-  }
-
-  String _cleanError(Object error) {
-    return error.toString().replaceFirst('Exception: ', '').trim();
   }
 
   void _showMessage(String message) {
@@ -287,77 +268,59 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
         backgroundColor: const Color(0xFF09111C),
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'Отзывы',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
+        title: Text(
+          _t('Отзывы', 'Пікірлер'),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
       ),
-      body: SafeArea(
-        child: _buildBody(),
-      ),
+      body: SafeArea(child: _buildBody()),
     );
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+    if (_isLoading && !_isRefreshing) {
+      return const Center(child: CircularProgressIndicator());
     }
-
     if (_error != null && _items.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Ошибка загрузки отзывов: $_error',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  height: 1.4,
+                _t(
+                  'Не удалось загрузить отзывы. Проверьте интернет и повторите.',
+                  'Пікірлерді жүктеу мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
                 ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, height: 1.4),
               ),
               const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: _load,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF489F2A),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Повторить'),
+                child: Text(_t('Повторить', 'Қайталау')),
               ),
             ],
           ),
         ),
       );
     }
-
     if (_items.isEmpty) {
       return RefreshIndicator(
         onRefresh: () => _load(refresh: true),
         color: const Color(0xFF489F2A),
-        backgroundColor: const Color(0xFF121B2C),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 140),
+          children: [
+            const SizedBox(height: 140),
             Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  'Пока нет отзывов',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
+              child: Text(
+                _t('Пока нет отзывов', 'Әзірге пікір жоқ'),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -369,7 +332,6 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
     return RefreshIndicator(
       onRefresh: () => _load(refresh: true),
       color: const Color(0xFF489F2A),
-      backgroundColor: const Color(0xFF121B2C),
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
@@ -388,7 +350,9 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
                       )
                     : const Icon(Icons.expand_more_rounded),
                 label: Text(
-                  _isLoadingMore ? 'Загрузка…' : 'Показать ещё',
+                  _isLoadingMore
+                      ? _t('Загрузка…', 'Жүктелуде…')
+                      : _t('Показать ещё', 'Тағы көрсету'),
                 ),
               ),
             );
@@ -425,6 +389,9 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final userName = review.userName == 'Пользователь'
+        ? context.tr('Пользователь', 'Пайдаланушы')
+        : review.userName;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -432,14 +399,9 @@ class _ReviewCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF151F32),
-            Color(0xFF0D1524),
-          ],
+          colors: [Color(0xFF151F32), Color(0xFF0D1524)],
         ),
-        border: Border.all(
-          color: const Color(0xFF22324A),
-        ),
+        border: Border.all(color: const Color(0xFF22324A)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,7 +415,7 @@ class _ReviewCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      review.userName,
+                      userName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -479,7 +441,6 @@ class _ReviewCard extends StatelessWidget {
                           style: const TextStyle(
                             color: Color(0xFF93A0B4),
                             fontSize: 12,
-                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -493,11 +454,7 @@ class _ReviewCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               review.text!.trim(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                height: 1.45,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.45),
             ),
           ],
           if (review.media.isNotEmpty) ...[
@@ -509,12 +466,14 @@ class _ReviewCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: review.reactionsSummary.entries.map((entry) {
-                return _ReactionChip(
-                  label: _reactionEmoji(entry.key),
-                  count: entry.value,
-                );
-              }).toList(growable: false),
+              children: review.reactionsSummary.entries
+                  .map(
+                    (entry) => _ReactionChip(
+                      label: _reactionEmoji(entry.key),
+                      count: entry.value,
+                    ),
+                  )
+                  .toList(growable: false),
             ),
           ],
           if (review.response != null && review.response!.hasContent) ...[
@@ -536,10 +495,8 @@ class _ReviewCard extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.reply_rounded),
-              label: const Text('Ответить от ресторана'),
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF65C044),
-              ),
+              label: Text(context.tr('Ответить от ресторана', 'Мейрамхана атынан жауап беру')),
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFF65C044)),
             ),
           ],
         ],
@@ -550,8 +507,7 @@ class _ReviewCard extends StatelessWidget {
   static String _formatDate(DateTime date) {
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
-    final year = date.year.toString();
-    return '$day.$month.$year';
+    return '$day.$month.${date.year}';
   }
 
   static String _reactionEmoji(String type) {
@@ -573,16 +529,12 @@ class _ReviewCard extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({
-    required this.imageUrl,
-  });
-
+  const _Avatar({required this.imageUrl});
   final String? imageUrl;
 
   @override
   Widget build(BuildContext context) {
     final absolute = _toAbsoluteUrl(imageUrl);
-
     return Container(
       width: 42,
       height: 42,
@@ -592,11 +544,7 @@ class _Avatar extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: absolute == null
-          ? const Icon(
-              Icons.person_rounded,
-              color: Colors.white70,
-              size: 20,
-            )
+          ? const Icon(Icons.person_rounded, color: Colors.white70, size: 20)
           : Image.network(
               absolute,
               fit: BoxFit.cover,
@@ -611,10 +559,7 @@ class _Avatar extends StatelessWidget {
 }
 
 class _ReviewMediaPreview extends StatelessWidget {
-  const _ReviewMediaPreview({
-    required this.media,
-  });
-
+  const _ReviewMediaPreview({required this.media});
   final List<ReviewMedia> media;
 
   @override
@@ -635,12 +580,9 @@ class _ReviewMediaPreview extends StatelessWidget {
               crossAxisCount: 3,
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
-              childAspectRatio: 1,
             ),
             itemBuilder: (_, index) {
-              final item = images[index];
-              final url = _toAbsoluteUrl(item.url);
-
+              final url = _toAbsoluteUrl(images[index].url);
               return ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Material(
@@ -648,9 +590,8 @@ class _ReviewMediaPreview extends StatelessWidget {
                   child: InkWell(
                     onTap: url == null
                         ? null
-                        : () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
                                 builder: (_) => _ImageViewerPage(
                                   imageUrls: images
                                       .map((e) => _toAbsoluteUrl(e.url))
@@ -659,13 +600,9 @@ class _ReviewMediaPreview extends StatelessWidget {
                                   initialIndex: index,
                                 ),
                               ),
-                            );
-                          },
+                            ),
                     child: url == null
-                        ? const Icon(
-                            Icons.broken_image_outlined,
-                            color: Colors.white70,
-                          )
+                        ? const Icon(Icons.broken_image_outlined, color: Colors.white70)
                         : Image.network(
                             url,
                             fit: BoxFit.cover,
@@ -681,21 +618,21 @@ class _ReviewMediaPreview extends StatelessWidget {
           ),
         if (videos.isNotEmpty) ...[
           if (images.isNotEmpty) const SizedBox(height: 10),
-          ...videos.map((item) {
-            return Padding(
+          ...videos.map(
+            (item) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _VideoReviewPlayer(media: item),
-            );
-          }),
+            ),
+          ),
         ],
         if (audios.isNotEmpty) ...[
           if (images.isNotEmpty || videos.isNotEmpty) const SizedBox(height: 2),
-          ...audios.map((item) {
-            return Padding(
+          ...audios.map(
+            (item) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _AudioReviewPlayer(media: item),
-            );
-          }),
+            ),
+          ),
         ],
       ],
     );
@@ -703,10 +640,7 @@ class _ReviewMediaPreview extends StatelessWidget {
 }
 
 class _VideoReviewPlayer extends StatefulWidget {
-  const _VideoReviewPlayer({
-    required this.media,
-  });
-
+  const _VideoReviewPlayer({required this.media});
   final ReviewMedia media;
 
   @override
@@ -717,7 +651,6 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
   VideoPlayerController? _controller;
   bool _isLoading = true;
   String? _error;
-  bool _isReady = false;
 
   @override
   void initState() {
@@ -730,31 +663,26 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
     if (url == null) {
       setState(() {
         _isLoading = false;
-        _error = 'Некорректная ссылка на видео';
+        _error = context.tr('Видео недоступно', 'Видео қолжетімсіз');
       });
       return;
     }
-
     try {
       final controller = VideoPlayerController.networkUrl(Uri.parse(url));
       await controller.initialize();
-      await controller.setLooping(false);
-
       if (!mounted) {
         await controller.dispose();
         return;
       }
-
       setState(() {
         _controller = controller;
         _isLoading = false;
-        _isReady = true;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = 'Не удалось загрузить видео';
+        _error = context.tr('Не удалось загрузить видео', 'Видеоны жүктеу мүмкін болмады');
       });
     }
   }
@@ -767,103 +695,79 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
 
   Future<void> _togglePlay() async {
     final controller = _controller;
-    if (controller == null || !_isReady) return;
-
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      await controller.play();
-    }
-
+    if (controller == null) return;
+    controller.value.isPlaying ? await controller.pause() : await controller.play();
     if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final preview = _toAbsoluteUrl(widget.media.previewUrl ?? widget.media.url);
+    final controller = _controller;
+    final aspect = controller != null && controller.value.aspectRatio > 0
+        ? controller.value.aspectRatio
+        : 16 / 9;
 
     return Container(
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFF111B2B),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFF22324A)),
       ),
-      padding: const EdgeInsets.all(10),
       child: Column(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: AspectRatio(
-              aspectRatio: _controller?.value.aspectRatio == null ||
-                      _controller!.value.aspectRatio <= 0
-                  ? (16 / 9)
-                  : _controller!.value.aspectRatio,
+              aspectRatio: aspect,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (_isReady && _controller != null)
-                    VideoPlayer(_controller!)
+                  if (controller != null)
+                    VideoPlayer(controller)
                   else if (preview != null)
                     Image.network(
                       preview,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: const Color(0xFF1E2A40),
-                        child: const Icon(
-                          Icons.videocam_outlined,
-                          color: Colors.white70,
-                          size: 40,
-                        ),
+                      errorBuilder: (_, __, ___) => const ColoredBox(
+                        color: Color(0xFF1E2A40),
+                        child: Icon(Icons.videocam_outlined, color: Colors.white70, size: 40),
                       ),
                     )
                   else
-                    Container(
-                      color: const Color(0xFF1E2A40),
-                      child: const Icon(
-                        Icons.videocam_outlined,
-                        color: Colors.white70,
-                        size: 40,
-                      ),
+                    const ColoredBox(
+                      color: Color(0xFF1E2A40),
+                      child: Icon(Icons.videocam_outlined, color: Colors.white70, size: 40),
                     ),
                   if (_isLoading)
-                    Container(
+                    const ColoredBox(
                       color: Colors.black26,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+                      child: Center(child: CircularProgressIndicator()),
                     ),
                   if (_error != null)
-                    Container(
-                      color: Colors.black38,
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
+                    ColoredBox(
+                      color: Colors.black54,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         ),
                       ),
-                    ),
-                  if (_error == null)
+                    )
+                  else if (controller != null)
                     Center(
-                      child: GestureDetector(
-                        onTap: _togglePlay,
-                        child: Container(
-                          width: 58,
-                          height: 58,
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Icon(
-                            (_controller?.value.isPlaying ?? false)
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            color: Colors.white,
-                            size: 34,
-                          ),
+                      child: IconButton.filled(
+                        onPressed: _togglePlay,
+                        iconSize: 34,
+                        icon: Icon(
+                          controller.value.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
                         ),
                       ),
                     ),
@@ -871,36 +775,21 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Видео-отзыв',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (_isReady && _controller != null)
-                Text(
-                  _formatDuration(_controller!.value.position),
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
-                ),
-            ],
+          const SizedBox(height: 9),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              context.tr('Видео-отзыв', 'Видео-пікір'),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
           ),
-          if (_isReady && _controller != null)
+          if (controller != null)
             VideoProgressIndicator(
-              _controller!,
+              controller,
               allowScrubbing: true,
               padding: const EdgeInsets.only(top: 8),
-              colors: VideoProgressColors(
-                playedColor: const Color(0xFF65C044),
+              colors: const VideoProgressColors(
+                playedColor: Color(0xFF65C044),
                 backgroundColor: Colors.white24,
                 bufferedColor: Colors.white38,
               ),
@@ -909,20 +798,10 @@ class _VideoReviewPlayerState extends State<_VideoReviewPlayer> {
       ),
     );
   }
-
-  static String _formatDuration(Duration value) {
-    final total = value.inSeconds;
-    final m = (total ~/ 60).toString().padLeft(2, '0');
-    final s = (total % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
 }
 
 class _AudioReviewPlayer extends StatefulWidget {
-  const _AudioReviewPlayer({
-    required this.media,
-  });
-
+  const _AudioReviewPlayer({required this.media});
   final ReviewMedia media;
 
   @override
@@ -931,7 +810,6 @@ class _AudioReviewPlayer extends StatefulWidget {
 
 class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
   late final AudioPlayer _player;
-
   bool _isLoading = true;
   String? _error;
   Duration _duration = Duration.zero;
@@ -942,31 +820,16 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
   void initState() {
     super.initState();
     _player = AudioPlayer();
-    _bind();
-    _init();
-  }
-
-  void _bind() {
     _player.durationStream.listen((value) {
-      if (!mounted) return;
-      setState(() {
-        _duration = value ?? Duration.zero;
-      });
+      if (mounted) setState(() => _duration = value ?? Duration.zero);
     });
-
     _player.positionStream.listen((value) {
-      if (!mounted) return;
-      setState(() {
-        _position = value;
-      });
+      if (mounted) setState(() => _position = value);
     });
-
     _player.playerStateStream.listen((state) {
-      if (!mounted) return;
-      setState(() {
-        _isPlaying = state.playing;
-      });
+      if (mounted) setState(() => _isPlaying = state.playing);
     });
+    _init();
   }
 
   Future<void> _init() async {
@@ -974,22 +837,18 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
     if (url == null) {
       setState(() {
         _isLoading = false;
-        _error = 'Некорректная ссылка на аудио';
+        _error = context.tr('Аудио недоступно', 'Аудио қолжетімсіз');
       });
       return;
     }
-
     try {
       await _player.setUrl(url);
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) setState(() => _isLoading = false);
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = 'Не удалось загрузить аудио';
+        _error = context.tr('Не удалось загрузить аудио', 'Аудионы жүктеу мүмкін болмады');
       });
     }
   }
@@ -1000,27 +859,12 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
     super.dispose();
   }
 
-  Future<void> _togglePlay() async {
-    if (_error != null) return;
-
-    if (_isPlaying) {
-      await _player.pause();
-    } else {
-      await _player.play();
-    }
-  }
-
-  Future<void> _seek(double value) async {
-    await _player.seek(Duration(milliseconds: value.round()));
-  }
-
   @override
   Widget build(BuildContext context) {
     final maxMs = _duration.inMilliseconds <= 0 ? 1 : _duration.inMilliseconds;
     final currentMs = _position.inMilliseconds.clamp(0, maxMs).toDouble();
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF111B2B),
         borderRadius: BorderRadius.circular(14),
@@ -1030,91 +874,52 @@ class _AudioReviewPlayerState extends State<_AudioReviewPlayer> {
         children: [
           Row(
             children: [
-              GestureDetector(
-                onTap: _togglePlay,
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A2A1B),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: _isLoading
-                      ? const Padding(
-                          padding: EdgeInsets.all(10),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          _isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          color: const Color(0xFF65C044),
-                        ),
-                ),
+              IconButton.filledTonal(
+                onPressed: _isLoading || _error != null
+                    ? null
+                    : () async {
+                        _isPlaying ? await _player.pause() : await _player.play();
+                      },
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
               ),
-              const SizedBox(width: 12),
-              const Expanded(
+              const SizedBox(width: 8),
+              Expanded(
                 child: Text(
-                  'Аудио-отзыв',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  context.tr('Аудио-отзыв', 'Аудио-пікір'),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
               ),
               Text(
                 _formatDuration(_position),
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ],
           ),
           if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              _error!,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
-            ),
+            const SizedBox(height: 8),
+            Text(_error!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
           ] else ...[
-            const SizedBox(height: 10),
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 3,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-              ),
-              child: Slider(
-                value: currentMs,
-                min: 0,
-                max: maxMs.toDouble(),
-                activeColor: const Color(0xFF65C044),
-                inactiveColor: Colors.white24,
-                onChanged: _isLoading ? null : _seek,
-              ),
+            Slider(
+              value: currentMs,
+              min: 0,
+              max: maxMs.toDouble(),
+              activeColor: const Color(0xFF65C044),
+              inactiveColor: Colors.white24,
+              onChanged: _isLoading
+                  ? null
+                  : (value) => _player.seek(Duration(milliseconds: value.round())),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _formatDuration(_position),
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                  ),
-                ),
-                Text(
-                  _formatDuration(_duration),
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                  ),
-                ),
+                Text(_formatDuration(_position), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                Text(_formatDuration(_duration), style: const TextStyle(color: Colors.white54, fontSize: 11)),
               ],
             ),
           ],
@@ -1151,19 +956,17 @@ class _ResponseBlock extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x1426A65B),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0x55489F2A),
-        ),
+        border: Border.all(color: const Color(0x55489F2A)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Ответ ресторана',
-                  style: TextStyle(
+                  context.tr('Ответ ресторана', 'Мейрамхана жауабы'),
+                  style: const TextStyle(
                     color: Color(0xFF65C044),
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -1179,45 +982,24 @@ class _ResponseBlock extends StatelessWidget {
               else ...[
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  tooltip: 'Изменить ответ',
+                  tooltip: context.tr('Изменить ответ', 'Жауапты өзгерту'),
                   onPressed: onEdit,
-                  icon: const Icon(
-                    Icons.edit_outlined,
-                    color: Color(0xFF93A0B4),
-                    size: 19,
-                  ),
+                  icon: const Icon(Icons.edit_outlined, color: Color(0xFF93A0B4), size: 19),
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  tooltip: 'Удалить ответ',
+                  tooltip: context.tr('Удалить ответ', 'Жауапты жою'),
                   onPressed: onDelete,
-                  icon: const Icon(
-                    Icons.delete_outline_rounded,
-                    color: Color(0xFFFF7C7C),
-                    size: 19,
-                  ),
+                  icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFFF7C7C), size: 19),
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            response.createdByName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
           if ((response.text ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               response.text!.trim(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                height: 1.45,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.45),
             ),
           ],
         ],
@@ -1227,11 +1009,7 @@ class _ResponseBlock extends StatelessWidget {
 }
 
 class _ReactionChip extends StatelessWidget {
-  const _ReactionChip({
-    required this.label,
-    required this.count,
-  });
-
+  const _ReactionChip({required this.label, required this.count});
   final String label;
   final int count;
 
@@ -1246,29 +1024,14 @@ class _ReactionChip extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label),
-          const SizedBox(width: 6),
-          Text(
-            '$count',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
+        children: [Text(label), const SizedBox(width: 6), Text('$count')],
       ),
     );
   }
 }
 
 class _ImageViewerPage extends StatefulWidget {
-  const _ImageViewerPage({
-    required this.imageUrls,
-    required this.initialIndex,
-  });
-
+  const _ImageViewerPage({required this.imageUrls, required this.initialIndex});
   final List<String> imageUrls;
   final int initialIndex;
 
@@ -1296,46 +1059,32 @@ class _ImageViewerPageState extends State<_ImageViewerPage> {
   @override
   Widget build(BuildContext context) {
     final total = widget.imageUrls.length;
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(
-          '${_index + 1} / $total',
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        title: Text('${_index + 1} / $total'),
       ),
       body: PageView.builder(
         controller: _controller,
         itemCount: total,
-        onPageChanged: (value) {
-          setState(() {
-            _index = value;
-          });
-        },
-        itemBuilder: (_, index) {
-          final imageUrl = widget.imageUrls[index];
-
-          return InteractiveViewer(
-            minScale: 0.8,
-            maxScale: 4,
-            child: Center(
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.white70,
-                  size: 40,
-                ),
+        onPageChanged: (value) => setState(() => _index = value),
+        itemBuilder: (_, index) => InteractiveViewer(
+          minScale: 0.8,
+          maxScale: 4,
+          child: Center(
+            child: Image.network(
+              widget.imageUrls[index],
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.broken_image_outlined,
+                color: Colors.white70,
+                size: 40,
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -1344,14 +1093,7 @@ class _ImageViewerPageState extends State<_ImageViewerPage> {
 String? _toAbsoluteUrl(String? raw) {
   final value = (raw ?? '').trim();
   if (value.isEmpty) return null;
-
-  if (value.startsWith('http://') || value.startsWith('https://')) {
-    return value;
-  }
-
-  if (value.startsWith('/')) {
-    return '${AppConfig.baseUrl}$value';
-  }
-
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  if (value.startsWith('/')) return '${AppConfig.baseUrl}$value';
   return '${AppConfig.baseUrl}/$value';
 }

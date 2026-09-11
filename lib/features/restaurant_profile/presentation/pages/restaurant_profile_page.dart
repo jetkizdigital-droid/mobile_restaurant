@@ -4,37 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:jetkiz_restaurant/core/config/app_config.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
-import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
+import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_access_choice_page.dart';
 import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
 import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_data.dart';
 import 'package:jetkiz_restaurant/features/restaurant_profile/widgets/restaurant_statistics_tab.dart';
-
-// JETKIZ RESTAURANT APP
-// Restaurant profile page.
-//
-// BACKEND:
-// - GET /auth/me
-// - GET /restaurants/me
-// - PATCH /restaurants/me
-// - POST /restaurants/:id/cover
-//
-// MULTI-BRANCH:
-// - restaurants[] / restaurantIds[] are loaded from /auth/me
-// - selected branch is stored in AuthStorage
-// - ApiClient sends x-restaurant-id automatically
-// - switching a branch reloads /restaurants/me
-//
-// IMPORTANT:
-// Backend upload currently accepts only:
-// jpg / jpeg / png / webp
-//
-// Because gallery/camera may return HEIC/HEIF on some devices,
-// selected image is converted to JPG before upload.
 
 class RestaurantProfilePage extends StatefulWidget {
   const RestaurantProfilePage({super.key, this.hideBottomBar = false});
@@ -45,13 +24,14 @@ class RestaurantProfilePage extends StatefulWidget {
   State<RestaurantProfilePage> createState() => _RestaurantProfilePageState();
 }
 
+enum _RestaurantProfileTab { profile, statistics }
+
 class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   late final RestaurantApi _restaurantApi;
   late final AuthApi _authApi;
   final ImagePicker _imagePicker = ImagePicker();
 
   Future<RestaurantProfileData>? _profileFuture;
-
   _RestaurantProfileTab _activeTab = _RestaurantProfileTab.profile;
 
   bool _isEditing = false;
@@ -63,17 +43,18 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _workingHoursController = TextEditingController();
 
-  List<_RestaurantBranch> _branches = const [];
+  List<_RestaurantBranch> _branches = const <_RestaurantBranch>[];
   String? _selectedRestaurantId;
-
   String? _lastProfileSyncKey;
   File? _localPhotoPreview;
   int _photoCacheBuster = DateTime.now().millisecondsSinceEpoch;
 
+  String _t(String ru, String kk) => context.tr(ru, kk);
+
   @override
   void initState() {
     super.initState();
-    _restaurantApi = RestaurantApi(ApiClient());
+    _restaurantApi = RestaurantApi(ApiClient.instance);
     _authApi = AuthApi();
     _profileFuture = _restaurantApi.getMyRestaurant();
     _loadBranches();
@@ -87,55 +68,64 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
     super.dispose();
   }
 
+  String _safeError(
+    Object error,
+    String fallbackRu,
+    String fallbackKk,
+  ) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 200 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http 4') ||
+        lower.contains('http 5')) {
+      return _t(fallbackRu, fallbackKk);
+    }
+    return raw;
+  }
+
   Future<void> _reloadProfile() async {
-    setState(() {
-      _profileFuture = _restaurantApi.getMyRestaurant();
-    });
+    if (!mounted) return;
+    setState(() => _profileFuture = _restaurantApi.getMyRestaurant());
     await _profileFuture;
   }
 
   Future<void> _loadBranches() async {
     if (_isLoadingBranches) return;
-
-    setState(() {
-      _isLoadingBranches = true;
-    });
+    if (mounted) setState(() => _isLoadingBranches = true);
 
     try {
       final me = await _authApi.getMe();
       final branches = _parseBranches(me);
-
       final savedRestaurantId = await AuthStorage().getSelectedRestaurantId();
       final apiRestaurantId = ApiClient.instance.selectedRestaurantId;
-      final backendRestaurantId = me['restaurantId']?.toString().trim();
+      final accountRestaurantId = me['restaurantId']?.toString().trim();
 
-      String? selectedRestaurantId =
-          _normalizeRestaurantId(savedRestaurantId) ??
-          _normalizeRestaurantId(apiRestaurantId) ??
-          _normalizeRestaurantId(backendRestaurantId);
+      var selected = _normalizeId(savedRestaurantId) ??
+          _normalizeId(apiRestaurantId) ??
+          _normalizeId(accountRestaurantId);
 
       if (branches.isNotEmpty &&
-          (selectedRestaurantId == null ||
-              !branches.any((item) => item.id == selectedRestaurantId))) {
-        selectedRestaurantId = branches.first.id;
-        await AuthStorage().saveSelectedRestaurantId(selectedRestaurantId);
-        ApiClient.instance.setSelectedRestaurantId(selectedRestaurantId);
+          (selected == null || !branches.any((branch) => branch.id == selected))) {
+        selected = branches.first.id;
+        await ApiClient.instance.setSelectedRestaurantId(selected);
       }
 
       if (!mounted) return;
-
       setState(() {
         _branches = branches;
-        _selectedRestaurantId = selectedRestaurantId;
+        _selectedRestaurantId = selected;
       });
-    } catch (_) {
-      // Не ломаем профиль, если список филиалов временно не загрузился.
+    } catch (error) {
+      debugPrint('Restaurant branches load failed: $error');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingBranches = false;
-        });
-      }
+      if (mounted) setState(() => _isLoadingBranches = false);
     }
   }
 
@@ -143,70 +133,59 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
     final result = <_RestaurantBranch>[];
     final seen = <String>{};
 
-    void addBranch({required String? id, String? nameRu, String? nameKk}) {
-      final normalizedId = _normalizeRestaurantId(id);
-
-      if (normalizedId == null || seen.contains(normalizedId)) {
-        return;
-      }
-
+    void add({required String? id, String? nameRu, String? nameKk}) {
+      final normalizedId = _normalizeId(id);
+      if (normalizedId == null || seen.contains(normalizedId)) return;
       seen.add(normalizedId);
-
       result.add(
         _RestaurantBranch(
           id: normalizedId,
-          nameRu: _normalizeText(nameRu) ?? 'Филиал ${result.length + 1}',
+          nameRu: _normalizeText(nameRu),
           nameKk: _normalizeText(nameKk),
+          ordinal: result.length + 1,
         ),
       );
     }
 
-    final restaurantsRaw = payload['restaurants'];
-    if (restaurantsRaw is List) {
-      for (final item in restaurantsRaw) {
-        if (item is Map) {
-          addBranch(
-            id: item['id']?.toString(),
-            nameRu: item['nameRu']?.toString(),
-            nameKk: item['nameKk']?.toString(),
-          );
-        }
+    final restaurants = payload['restaurants'];
+    if (restaurants is List) {
+      for (final item in restaurants.whereType<Map>()) {
+        add(
+          id: item['id']?.toString(),
+          nameRu: item['nameRu']?.toString(),
+          nameKk: item['nameKk']?.toString(),
+        );
       }
     }
 
-    final restaurantRaw = payload['restaurant'];
-    if (restaurantRaw is Map) {
-      addBranch(
-        id: restaurantRaw['id']?.toString(),
-        nameRu: restaurantRaw['nameRu']?.toString(),
-        nameKk: restaurantRaw['nameKk']?.toString(),
+    final restaurant = payload['restaurant'];
+    if (restaurant is Map) {
+      add(
+        id: restaurant['id']?.toString(),
+        nameRu: restaurant['nameRu']?.toString(),
+        nameKk: restaurant['nameKk']?.toString(),
       );
     }
 
-    final restaurantIdsRaw = payload['restaurantIds'];
-    if (restaurantIdsRaw is List) {
-      for (final item in restaurantIdsRaw) {
-        addBranch(id: item?.toString());
+    final ids = payload['restaurantIds'];
+    if (ids is List) {
+      for (final id in ids) {
+        add(id: id?.toString());
       }
     }
 
-    final accessesRaw = payload['restaurantAccesses'];
-    if (accessesRaw is List) {
-      for (final item in accessesRaw) {
-        if (item is Map) {
-          final nestedRestaurant = item['restaurant'];
-
-          if (nestedRestaurant is Map) {
-            addBranch(
-              id:
-                  nestedRestaurant['id']?.toString() ??
-                  item['restaurantId']?.toString(),
-              nameRu: nestedRestaurant['nameRu']?.toString(),
-              nameKk: nestedRestaurant['nameKk']?.toString(),
-            );
-          } else {
-            addBranch(id: item['restaurantId']?.toString());
-          }
+    final accesses = payload['restaurantAccesses'];
+    if (accesses is List) {
+      for (final access in accesses.whereType<Map>()) {
+        final nested = access['restaurant'];
+        if (nested is Map) {
+          add(
+            id: nested['id']?.toString() ?? access['restaurantId']?.toString(),
+            nameRu: nested['nameRu']?.toString(),
+            nameKk: nested['nameKk']?.toString(),
+          );
+        } else {
+          add(id: access['restaurantId']?.toString());
         }
       }
     }
@@ -214,37 +193,21 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
     return result;
   }
 
-  String? _normalizeRestaurantId(String? value) {
-    final normalized = value?.trim();
-
-    if (normalized == null || normalized.isEmpty) {
-      return null;
-    }
-
-    return normalized;
+  String? _normalizeId(String? value) {
+    final text = value?.trim();
+    return text == null || text.isEmpty ? null : text;
   }
 
   String? _normalizeText(String? value) {
-    final normalized = value?.trim();
-
-    if (normalized == null || normalized.isEmpty) {
-      return null;
-    }
-
-    return normalized;
+    final text = value?.trim();
+    return text == null || text.isEmpty ? null : text;
   }
 
   Future<void> _selectBranch(_RestaurantBranch branch) async {
-    if (_selectedRestaurantId == branch.id) {
-      return;
-    }
-
+    if (_selectedRestaurantId == branch.id) return;
     try {
-      await AuthStorage().saveSelectedRestaurantId(branch.id);
-      ApiClient.instance.setSelectedRestaurantId(branch.id);
-
+      await ApiClient.instance.setSelectedRestaurantId(branch.id);
       if (!mounted) return;
-
       setState(() {
         _selectedRestaurantId = branch.id;
         _isEditing = false;
@@ -252,20 +215,26 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
         _localPhotoPreview = null;
         _profileFuture = _restaurantApi.getMyRestaurant();
       });
-
       await _profileFuture;
-
       if (!mounted) return;
-      _showSnackBar('Филиал выбран: ${branch.displayName}');
-    } catch (e) {
+      _showSnackBar(
+        '${_t('Филиал выбран', 'Филиал таңдалды')}: ${branch.displayName(context)}',
+      );
+    } catch (error) {
       if (!mounted) return;
-      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
+      _showSnackBar(
+        _safeError(
+          error,
+          'Не удалось сменить филиал. Попробуйте ещё раз.',
+          'Филиалды ауыстыру мүмкін болмады. Қайта көріңіз.',
+        ),
+      );
     }
   }
 
   Future<void> _showBranchSelector() async {
     if (_branches.length <= 1) {
-      _showSnackBar('У вас один филиал');
+      _showSnackBar(_t('У вас один филиал', 'Сізде бір филиал бар'));
       return;
     }
 
@@ -275,90 +244,77 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF33445F),
-                    borderRadius: BorderRadius.circular(999),
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF33445F),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Выберите филиал',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
+                Text(
+                  _t('Выберите филиал', 'Филиалды таңдаңыз'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 12),
                 ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.55,
+                    maxHeight: MediaQuery.of(sheetContext).size.height * 0.55,
                   ),
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: _branches.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
+                    itemBuilder: (_, index) {
                       final branch = _branches[index];
-                      final isSelected = branch.id == _selectedRestaurantId;
-
+                      final active = branch.id == _selectedRestaurantId;
                       return Material(
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(16),
-                          onTap: () => Navigator.of(context).pop(branch),
+                          onTap: () => Navigator.of(sheetContext).pop(branch),
                           child: Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: isSelected
+                              color: active
                                   ? const Color(0x223A9F2A)
                                   : const Color(0xFF151F32),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: isSelected
+                                color: active
                                     ? const Color(0xFF489F2A)
                                     : const Color(0xFF22324A),
                               ),
                             ),
                             child: Row(
                               children: [
-                                Container(
-                                  width: 38,
-                                  height: 38,
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? const Color(0x33489F2A)
-                                        : const Color(0xFF0E1626),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Icon(
-                                    isSelected
-                                        ? Icons.check_rounded
-                                        : Icons.storefront_rounded,
-                                    color: isSelected
-                                        ? const Color(0xFF65C044)
-                                        : const Color(0xFF7E8CA3),
-                                    size: 20,
-                                  ),
+                                Icon(
+                                  active
+                                      ? Icons.check_circle_rounded
+                                      : Icons.storefront_rounded,
+                                  color: active
+                                      ? const Color(0xFF65C044)
+                                      : const Color(0xFF7E8CA3),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    branch.displayName,
+                                    branch.displayName(context),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 15,
@@ -381,13 +337,11 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       },
     );
 
-    if (selected != null) {
-      await _selectBranch(selected);
-    }
+    if (selected != null) await _selectBranch(selected);
   }
 
-  void _syncControllersFromProfile(RestaurantProfileData profile) {
-    final syncKey = [
+  void _syncControllers(RestaurantProfileData profile) {
+    final key = <String>[
       profile.id,
       profile.phone ?? '',
       profile.address ?? '',
@@ -395,14 +349,10 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       profile.workingHoursFrom ?? '',
       profile.workingHoursTo ?? '',
     ].join('|');
-
-    if (_lastProfileSyncKey == syncKey) {
-      return;
-    }
+    if (_lastProfileSyncKey == key) return;
 
     _phoneController.text = profile.phone?.trim() ?? '';
     _addressController.text = profile.address?.trim() ?? '';
-
     if (profile.workingHours?.trim().isNotEmpty == true) {
       _workingHoursController.text = profile.workingHours!.trim();
     } else if (profile.workingHoursFrom?.trim().isNotEmpty == true &&
@@ -410,24 +360,9 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       _workingHoursController.text =
           '${profile.workingHoursFrom!.trim()} - ${profile.workingHoursTo!.trim()}';
     } else {
-      _workingHoursController.text = '';
+      _workingHoursController.clear();
     }
-
-    _lastProfileSyncKey = syncKey;
-  }
-
-  void _startEditing(RestaurantProfileData profile) {
-    _syncControllersFromProfile(profile);
-    setState(() {
-      _isEditing = true;
-    });
-  }
-
-  void _cancelEditing(RestaurantProfileData profile) {
-    _syncControllersFromProfile(profile);
-    setState(() {
-      _isEditing = false;
-    });
+    _lastProfileSyncKey = key;
   }
 
   Future<void> _saveProfile(RestaurantProfileData profile) async {
@@ -436,173 +371,163 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
     final workingHours = _workingHoursController.text.trim();
 
     if (address.isEmpty) {
-      _showSnackBar('Введите адрес');
+      _showSnackBar(_t('Введите адрес', 'Мекенжайды енгізіңіз'));
       return;
     }
-
     if (phone.isEmpty) {
-      _showSnackBar('Введите телефон');
+      _showSnackBar(_t('Введите телефон', 'Телефонды енгізіңіз'));
       return;
     }
-
     if (workingHours.isEmpty) {
-      _showSnackBar('Введите время работы');
+      _showSnackBar(_t('Введите время работы', 'Жұмыс уақытын енгізіңіз'));
       return;
     }
 
-    setState(() {
-      _isSaving = true;
-    });
-
+    setState(() => _isSaving = true);
     try {
-      final updatedProfile = await _restaurantApi.updateMe(
+      final updated = await _restaurantApi.updateMe(
         address: address,
         phone: phone,
         workingHours: workingHours,
       );
-
-      _syncControllersFromProfile(updatedProfile);
-
+      _syncControllers(updated);
       if (!mounted) return;
-
       setState(() {
         _isEditing = false;
-        _profileFuture = Future.value(updatedProfile);
+        _profileFuture = Future<RestaurantProfileData>.value(updated);
       });
-
       await _reloadProfile();
-
+      if (mounted) _showSnackBar(_t('Профиль сохранён', 'Профиль сақталды'));
+    } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Профиль сохранён');
-    } catch (e) {
-      if (!mounted) return;
-      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
+      _showSnackBar(
+        _safeError(
+          error,
+          'Не удалось сохранить профиль. Проверьте данные и повторите.',
+          'Профильді сақтау мүмкін болмады. Деректерді тексеріп, қайталаңыз.',
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Future<File> _prepareUploadFile(File originalFile) async {
-    final lowerPath = originalFile.path.toLowerCase();
-
-    final alreadySupported =
-        lowerPath.endsWith('.jpg') ||
-        lowerPath.endsWith('.jpeg') ||
-        lowerPath.endsWith('.png') ||
-        lowerPath.endsWith('.webp');
-
-    if (alreadySupported) {
+    final path = originalFile.path.toLowerCase();
+    if (path.endsWith('.jpg') ||
+        path.endsWith('.jpeg') ||
+        path.endsWith('.png') ||
+        path.endsWith('.webp')) {
       return originalFile;
     }
 
-    final targetPath = '${originalFile.path}_upload.jpg';
-
     final compressed = await FlutterImageCompress.compressAndGetFile(
       originalFile.absolute.path,
-      targetPath,
+      '${originalFile.path}_upload.jpg',
       format: CompressFormat.jpeg,
       quality: 90,
     );
-
-    if (compressed == null) {
-      throw Exception('Не удалось подготовить фото к загрузке');
-    }
-
+    if (compressed == null) throw const _PhotoPreparationException();
     return File(compressed.path);
   }
 
   Future<void> _pickAndUploadPhoto() async {
     if (_isUploadingPhoto) return;
-
     try {
-      final pickedFile = await _imagePicker.pickImage(
+      final picked = await _imagePicker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 95,
       );
+      if (picked == null) return;
 
-      if (pickedFile == null) {
-        return;
-      }
-
-      final originalFile = File(pickedFile.path);
-      final uploadFile = await _prepareUploadFile(originalFile);
-
+      final uploadFile = await _prepareUploadFile(File(picked.path));
       if (!mounted) return;
-
       setState(() {
         _localPhotoPreview = uploadFile;
         _isUploadingPhoto = true;
       });
 
-      final updatedProfile = await _restaurantApi.uploadRestaurantCover(
-        uploadFile,
-      );
-
+      final updated = await _restaurantApi.uploadRestaurantCover(uploadFile);
       if (!mounted) return;
-
       setState(() {
-        _profileFuture = Future.value(updatedProfile);
+        _profileFuture = Future<RestaurantProfileData>.value(updated);
         _localPhotoPreview = null;
         _photoCacheBuster = DateTime.now().millisecondsSinceEpoch;
       });
-
       await _reloadProfile();
-
+      if (mounted) _showSnackBar(_t('Фото обновлено', 'Фото жаңартылды'));
+    } catch (error) {
       if (!mounted) return;
-
-      setState(() {
-        _photoCacheBuster = DateTime.now().millisecondsSinceEpoch;
-      });
-
-      _showSnackBar('Фото обновлено');
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _localPhotoPreview = null;
-      });
-      _showSnackBar(e.toString().replaceFirst('Exception: ', ''));
+      setState(() => _localPhotoPreview = null);
+      _showSnackBar(
+        error is _PhotoPreparationException
+            ? _t(
+                'Не удалось подготовить фото. Выберите другое изображение.',
+                'Фотосуретті дайындау мүмкін болмады. Басқа суретті таңдаңыз.',
+              )
+            : _safeError(
+                error,
+                'Не удалось загрузить фото. Попробуйте ещё раз.',
+                'Фотосуретті жүктеу мүмкін болмады. Қайта көріңіз.',
+              ),
+      );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isUploadingPhoto = false;
-        });
-      }
+      if (mounted) setState(() => _isUploadingPhoto = false);
     }
   }
 
   Future<void> _logout() async {
     try {
       await RestaurantPushNotificationService.instance.unregisterCurrentToken();
-    } catch (_) {
-      // Local logout must still complete when unregister is temporarily unavailable.
-    }
-
+    } catch (_) {}
     try {
       await _authApi.logout();
-    } catch (_) {
-      // Local logout must still complete when the server is temporarily unavailable.
-    }
+    } catch (_) {}
 
     RestaurantPushNotificationService.instance.markNavigationUnavailable();
     await AuthStorage().clearTokens();
     ApiClient.instance.clearSelectedRestaurantId();
-
     if (!mounted) return;
 
     Navigator.of(context).pushAndRemoveUntil(
-      AppPageRoute<void>(page: const RestaurantAuthPage()),
+      AppPageRoute<void>(page: const RestaurantAccessChoicePage()),
       (route) => false,
     );
   }
 
   void _showSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _displayName(RestaurantProfileData profile) {
+    final primary = context.isKazakh ? profile.nameKk : profile.nameRu;
+    final fallback = context.isKazakh ? profile.nameRu : profile.nameKk;
+    final first = primary?.trim() ?? '';
+    if (first.isNotEmpty) return first;
+    final second = fallback?.trim() ?? '';
+    return second.isNotEmpty ? second : _t('Без названия', 'Атаусыз');
+  }
+
+  String _displayAddress(RestaurantProfileData profile) {
+    final value = profile.address?.trim() ?? '';
+    return value.isEmpty ? _t('Адрес не указан', 'Мекенжай көрсетілмеген') : value;
+  }
+
+  String _displayPhone(RestaurantProfileData profile) {
+    final value = profile.phone?.trim() ?? '';
+    return value.isEmpty ? _t('Телефон не указан', 'Телефон көрсетілмеген') : value;
+  }
+
+  String _displayWorkingHours(RestaurantProfileData profile) {
+    final value = profile.workingHours?.trim() ?? '';
+    if (value.isNotEmpty) return value;
+    final from = profile.workingHoursFrom?.trim() ?? '';
+    final to = profile.workingHoursTo?.trim() ?? '';
+    if (from.isNotEmpty && to.isNotEmpty) return '$from - $to';
+    return _t('Время не указано', 'Уақыт көрсетілмеген');
   }
 
   @override
@@ -613,15 +538,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
           ? null
           : AppBar(
               backgroundColor: const Color(0xFF09111C),
-              elevation: 0,
-              centerTitle: true,
-              title: const Text(
-                'Мой ресторан',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              title: Text(_t('Мой ресторан', 'Менің мейрамханам')),
             ),
       body: SafeArea(
         child: FutureBuilder<RestaurantProfileData>(
@@ -630,64 +547,43 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-
             if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Ошибка загрузки профиля: ${snapshot.error}',
-                        style: const TextStyle(color: Colors.white70),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: _reloadProfile,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF489F2A),
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Повторить'),
-                      ),
-                    ],
-                  ),
+              return _ProfileMessageState(
+                message: _safeError(
+                  snapshot.error!,
+                  'Не удалось загрузить профиль. Проверьте интернет и повторите.',
+                  'Профильді жүктеу мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
                 ),
+                actionLabel: _t('Повторить', 'Қайталау'),
+                onAction: _reloadProfile,
               );
             }
 
             final profile = snapshot.data;
             if (profile == null) {
-              return const Center(
-                child: Text(
-                  'Профиль не найден',
-                  style: TextStyle(color: Colors.white70),
-                ),
+              return _ProfileMessageState(
+                message: _t('Профиль не найден', 'Профиль табылмады'),
+                actionLabel: _t('Обновить', 'Жаңарту'),
+                onAction: _reloadProfile,
               );
             }
 
-            if (!_isEditing) {
-              _syncControllersFromProfile(profile);
-            }
-
+            if (!_isEditing) _syncControllers(profile);
             return Column(
               children: [
                 _ProfileTopHeader(
                   activeTab: _activeTab,
                   isEditing: _isEditing,
                   isSaving: _isSaving,
-                  onTabChanged: (tab) {
-                    setState(() => _activeTab = tab);
-                  },
+                  onTabChanged: (tab) => setState(() => _activeTab = tab),
                   onEditTap: () {
                     if (_isSaving || _isUploadingPhoto) return;
-
                     if (_isEditing) {
-                      _cancelEditing(profile);
+                      _syncControllers(profile);
+                      setState(() => _isEditing = false);
                     } else {
-                      _startEditing(profile);
+                      _syncControllers(profile);
+                      setState(() => _isEditing = true);
                     }
                   },
                 ),
@@ -695,29 +591,9 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 220),
                     child: _activeTab == _RestaurantProfileTab.profile
-                        ? _ProfileTabView(
-                            key: const ValueKey('profile_tab'),
-                            profile: profile,
-                            branches: _branches,
-                            selectedRestaurantId: _selectedRestaurantId,
-                            isLoadingBranches: _isLoadingBranches,
-                            onChangeBranch: () => _showBranchSelector(),
-                            onReload: _reloadProfile,
-                            isEditing: _isEditing,
-                            isSaving: _isSaving,
-                            isUploadingPhoto: _isUploadingPhoto,
-                            localPhotoPreview: _localPhotoPreview,
-                            photoCacheBuster: _photoCacheBuster,
-                            phoneController: _phoneController,
-                            addressController: _addressController,
-                            workingHoursController: _workingHoursController,
-                            onCancel: () => _cancelEditing(profile),
-                            onSave: () => _saveProfile(profile),
-                            onChangePhoto: _pickAndUploadPhoto,
-                            onLogout: _logout,
-                          )
+                        ? _buildProfileTab(profile)
                         : RestaurantStatisticsTab(
-                            key: ValueKey('statistics_tab_${profile.id}'),
+                            key: ValueKey('statistics_${profile.id}'),
                             restaurantId: profile.id,
                           ),
                   ),
@@ -729,9 +605,129 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       ),
     );
   }
+
+  Widget _buildProfileTab(RestaurantProfileData profile) {
+    final selectedBranch = _branches.cast<_RestaurantBranch?>().firstWhere(
+          (branch) => branch?.id == _selectedRestaurantId,
+          orElse: () => _branches.isEmpty ? null : _branches.first,
+        );
+
+    return RefreshIndicator(
+      onRefresh: _reloadProfile,
+      color: const Color(0xFF489F2A),
+      backgroundColor: const Color(0xFF121B2C),
+      child: ListView(
+        key: const ValueKey('profile_tab'),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+        children: [
+          _PhotoCard(
+            profile: profile,
+            localPreview: _localPhotoPreview,
+            cacheBuster: _photoCacheBuster,
+            uploading: _isUploadingPhoto,
+            onChange: _pickAndUploadPhoto,
+          ),
+          const SizedBox(height: 12),
+          if (_isLoadingBranches || selectedBranch != null)
+            _BranchCard(
+              branch: selectedBranch,
+              branchCount: _branches.length,
+              loading: _isLoadingBranches,
+              onTap: _showBranchSelector,
+            ),
+          if (_isLoadingBranches || selectedBranch != null)
+            const SizedBox(height: 12),
+          _ReadOnlyCard(
+            icon: Icons.storefront_rounded,
+            title: _t('Название', 'Атауы'),
+            value: _displayName(profile),
+          ),
+          const SizedBox(height: 12),
+          _EditableCard(
+            icon: Icons.location_on_outlined,
+            title: _t('Адрес', 'Мекенжай'),
+            value: _displayAddress(profile),
+            controller: _addressController,
+            enabled: _isEditing && !_isSaving,
+            hint: _t('Введите адрес', 'Мекенжайды енгізіңіз'),
+            maxLines: 3,
+          ),
+          const SizedBox(height: 12),
+          _EditableCard(
+            icon: Icons.phone_outlined,
+            title: _t('Телефон', 'Телефон'),
+            value: _displayPhone(profile),
+            controller: _phoneController,
+            enabled: _isEditing && !_isSaving,
+            hint: '+7 700 000 00 00',
+          ),
+          const SizedBox(height: 12),
+          _EditableCard(
+            icon: Icons.access_time_rounded,
+            title: _t('Время работы', 'Жұмыс уақыты'),
+            value: _displayWorkingHours(profile),
+            controller: _workingHoursController,
+            enabled: _isEditing && !_isSaving,
+            hint: '09:00 - 22:00',
+          ),
+          const SizedBox(height: 12),
+          _StatusCard(status: profile.status),
+          if (_isEditing) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isSaving
+                        ? null
+                        : () {
+                            _syncControllers(profile);
+                            setState(() => _isEditing = false);
+                          },
+                    child: Text(_t('Отмена', 'Бас тарту')),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _isSaving ? null : () => _saveProfile(profile),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF489F2A),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(_t('Сохранить', 'Сақтау')),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: _logout,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+            icon: const Icon(Icons.logout_rounded),
+            label: Text(_t('Выйти из аккаунта', 'Аккаунттан шығу')),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-enum _RestaurantProfileTab { profile, statistics }
+class _PhotoPreparationException implements Exception {
+  const _PhotoPreparationException();
+}
 
 class _ProfileTopHeader extends StatelessWidget {
   const _ProfileTopHeader({
@@ -752,108 +748,68 @@ class _ProfileTopHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
           colors: [Color(0xFF489F2A), Color(0xFF3A7E21)],
         ),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x332E6A1A),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
       ),
       child: Column(
         children: [
           Row(
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.storefront_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
+              const Icon(Icons.storefront_rounded, color: Colors.white),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Мой ресторан',
-                  style: TextStyle(
+                  context.tr('Мой ресторан', 'Менің мейрамханам'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: isSaving ? null : onEditTap,
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.16),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: isSaving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          )
-                        : Icon(
-                            isEditing
-                                ? Icons.close_rounded
-                                : Icons.edit_outlined,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                  ),
-                ),
+              IconButton(
+                onPressed: isSaving ? null : onEditTap,
+                icon: isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        isEditing ? Icons.close_rounded : Icons.edit_outlined,
+                        color: Colors.white,
+                      ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Container(
             height: 40,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.16),
+              color: Colors.white.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
               children: [
                 Expanded(
-                  child: _HeaderTabButton(
-                    text: 'Профиль',
-                    isActive: activeTab == _RestaurantProfileTab.profile,
+                  child: _TabButton(
+                    text: context.tr('Профиль', 'Профиль'),
+                    active: activeTab == _RestaurantProfileTab.profile,
                     onTap: () => onTabChanged(_RestaurantProfileTab.profile),
                   ),
                 ),
                 Expanded(
-                  child: _HeaderTabButton(
-                    text: 'Статистика',
-                    isActive: activeTab == _RestaurantProfileTab.statistics,
+                  child: _TabButton(
+                    text: context.tr('Статистика', 'Статистика'),
+                    active: activeTab == _RestaurantProfileTab.statistics,
                     onTap: () => onTabChanged(_RestaurantProfileTab.statistics),
                   ),
                 ),
@@ -866,48 +822,30 @@ class _ProfileTopHeader extends StatelessWidget {
   }
 }
 
-class _HeaderTabButton extends StatelessWidget {
-  const _HeaderTabButton({
-    required this.text,
-    required this.isActive,
-    required this.onTap,
-  });
+class _TabButton extends StatelessWidget {
+  const _TabButton({required this.text, required this.active, required this.onTap});
 
   final String text;
-  final bool isActive;
+  final bool active;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: isActive ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: isActive
-                ? const [
-                    BoxShadow(
-                      color: Color(0x22000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            text,
-            style: TextStyle(
-              color: isActive ? const Color(0xFF489F2A) : Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: active ? const Color(0xFF489F2A) : Colors.white,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -915,354 +853,92 @@ class _HeaderTabButton extends StatelessWidget {
   }
 }
 
-class _ProfileTabView extends StatelessWidget {
-  const _ProfileTabView({
-    super.key,
+class _PhotoCard extends StatelessWidget {
+  const _PhotoCard({
     required this.profile,
-    required this.branches,
-    required this.selectedRestaurantId,
-    required this.isLoadingBranches,
-    required this.onChangeBranch,
-    required this.onReload,
-    required this.isEditing,
-    required this.isSaving,
-    required this.isUploadingPhoto,
-    required this.localPhotoPreview,
-    required this.photoCacheBuster,
-    required this.phoneController,
-    required this.addressController,
-    required this.workingHoursController,
-    required this.onCancel,
-    required this.onSave,
-    required this.onChangePhoto,
-    required this.onLogout,
-  });
-
-  final RestaurantProfileData profile;
-  final List<_RestaurantBranch> branches;
-  final String? selectedRestaurantId;
-  final bool isLoadingBranches;
-  final VoidCallback onChangeBranch;
-  final Future<void> Function() onReload;
-  final bool isEditing;
-  final bool isSaving;
-  final bool isUploadingPhoto;
-  final File? localPhotoPreview;
-  final int photoCacheBuster;
-  final TextEditingController phoneController;
-  final TextEditingController addressController;
-  final TextEditingController workingHoursController;
-  final VoidCallback onCancel;
-  final VoidCallback onSave;
-  final VoidCallback onChangePhoto;
-  final VoidCallback onLogout;
-
-  @override
-  Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: onReload,
-      color: const Color(0xFF489F2A),
-      backgroundColor: const Color(0xFF121B2C),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-        children: [
-          _RestaurantPhotoCard(
-            profile: profile,
-            localPreviewFile: localPhotoPreview,
-            isUploading: isUploadingPhoto,
-            onChangePhoto: onChangePhoto,
-            cacheBuster: photoCacheBuster,
-          ),
-          const SizedBox(height: 14),
-          _BranchSelectorCard(
-            branches: branches,
-            selectedRestaurantId: selectedRestaurantId,
-            isLoading: isLoadingBranches,
-            onTap: onChangeBranch,
-          ),
-          const SizedBox(height: 12),
-          _InfoCard(
-            icon: Icons.storefront_rounded,
-            iconBg: const Color(0x33489F2A),
-            iconColor: const Color(0xFF65C044),
-            title: 'Название',
-            value: _displayName(profile),
-            helperText: isEditing
-                ? 'Название пока читается только из backend и в этом экране не редактируется'
-                : null,
-          ),
-          const SizedBox(height: 12),
-          _EditableInfoCard(
-            icon: Icons.location_on_outlined,
-            iconBg: const Color(0x332A7BFF),
-            iconColor: const Color(0xFF5EA3FF),
-            title: 'Адрес',
-            controller: addressController,
-            value: _displayAddress(profile),
-            hintText: 'Введите адрес',
-            enabled: isEditing && !isSaving,
-            multiLine: true,
-            minLines: 2,
-            maxLines: 4,
-          ),
-          const SizedBox(height: 12),
-          _EditableInfoCard(
-            icon: Icons.phone_outlined,
-            iconBg: const Color(0x336C3DF4),
-            iconColor: const Color(0xFFA27BFF),
-            title: 'Телефон',
-            controller: phoneController,
-            value: _displayPhone(profile),
-            hintText: 'Введите телефон',
-            enabled: isEditing && !isSaving,
-          ),
-          const SizedBox(height: 12),
-          _EditableInfoCard(
-            icon: Icons.access_time_rounded,
-            iconBg: const Color(0x33F08A24),
-            iconColor: const Color(0xFFFFA247),
-            title: 'Время работы',
-            controller: workingHoursController,
-            value: _displayWorkingHours(profile),
-            hintText: 'Например: 09:00 - 22:00',
-            enabled: isEditing && !isSaving,
-          ),
-          const SizedBox(height: 12),
-          _StatusCard(status: profile.status),
-          if (isEditing) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: isSaving ? null : onCancel,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF33445F)),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text('Отмена'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: isSaving ? null : onSave,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF489F2A),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: isSaving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          )
-                        : const Text(
-                            'Сохранить',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: onLogout,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE53935),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: const Text(
-              'Выйти из аккаунта',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _displayName(RestaurantProfileData profile) {
-    if (profile.nameRu.trim().isNotEmpty) return profile.nameRu.trim();
-    if (profile.nameKk?.trim().isNotEmpty == true)
-      return profile.nameKk!.trim();
-    return 'Без названия';
-  }
-
-  static String _displayAddress(RestaurantProfileData profile) {
-    if (profile.address?.trim().isNotEmpty == true) {
-      return profile.address!.trim();
-    }
-    return 'Адрес не указан';
-  }
-
-  static String _displayPhone(RestaurantProfileData profile) {
-    if (profile.phone?.trim().isNotEmpty == true) return profile.phone!.trim();
-    return 'Телефон не указан';
-  }
-
-  static String _displayWorkingHours(RestaurantProfileData profile) {
-    if (profile.workingHours?.trim().isNotEmpty == true) {
-      return profile.workingHours!.trim();
-    }
-
-    if (profile.workingHoursFrom?.trim().isNotEmpty == true &&
-        profile.workingHoursTo?.trim().isNotEmpty == true) {
-      return '${profile.workingHoursFrom!.trim()} - ${profile.workingHoursTo!.trim()}';
-    }
-
-    return 'Время не указано';
-  }
-}
-
-class _RestaurantPhotoCard extends StatelessWidget {
-  const _RestaurantPhotoCard({
-    required this.profile,
-    required this.localPreviewFile,
-    required this.isUploading,
-    required this.onChangePhoto,
+    required this.localPreview,
     required this.cacheBuster,
+    required this.uploading,
+    required this.onChange,
   });
 
   final RestaurantProfileData profile;
-  final File? localPreviewFile;
-  final bool isUploading;
-  final VoidCallback onChangePhoto;
+  final File? localPreview;
   final int cacheBuster;
+  final bool uploading;
+  final VoidCallback onChange;
+
+  String _remoteUrl() {
+    final raw = profile.coverImageUrl?.trim() ?? '';
+    if (raw.isNotEmpty) {
+      final url = raw.startsWith('http') ? raw : '${AppConfig.baseUrl}$raw';
+      return '$url?t=$cacheBuster';
+    }
+    final legacy = profile.imageUrl?.trim() ?? '';
+    return legacy.isEmpty ? '' : '$legacy?t=$cacheBuster';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final remoteImageUrl = _resolveRemoteImage(profile);
-    final hasRemoteImage = remoteImageUrl.isNotEmpty;
-    final hasLocalPreview = localPreviewFile != null;
-
+    final url = _remoteUrl();
     return Container(
-      padding: const EdgeInsets.all(14),
+      height: 190,
       decoration: BoxDecoration(
+        color: const Color(0xFF131E2D),
         borderRadius: BorderRadius.circular(22),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF172338), Color(0xFF0F1829)],
-        ),
         border: Border.all(color: const Color(0xFF22324A)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 18,
-            offset: Offset(0, 8),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (localPreview != null)
+            Image.file(localPreview!, fit: BoxFit.cover)
+          else if (url.isNotEmpty)
+            Image.network(
+              url,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const _PhotoPlaceholder(),
+            )
+          else
+            const _PhotoPlaceholder(),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Color(0x77000000), Colors.transparent],
+              ),
+            ),
+          ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: FilledButton.icon(
+              onPressed: uploading ? null : onChange,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF489F2A),
+              ),
+              icon: uploading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.photo_library_outlined),
+              label: Text(
+                uploading
+                    ? context.tr('Загрузка...', 'Жүктелуде...')
+                    : context.tr('Изменить фото', 'Фотосуретті өзгерту'),
+              ),
+            ),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Stack(
-          children: [
-            if (hasLocalPreview)
-              Image.file(
-                localPreviewFile!,
-                height: 186,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              )
-            else if (hasRemoteImage)
-              Image.network(
-                remoteImageUrl,
-                height: 186,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, error, stackTrace) {
-                  return const _PhotoPlaceholder();
-                },
-              )
-            else
-              const _PhotoPlaceholder(),
-            Container(
-              height: 186,
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [Color(0x66000000), Colors.transparent],
-                ),
-              ),
-            ),
-            Positioned(
-              right: 12,
-              bottom: 12,
-              child: ElevatedButton.icon(
-                onPressed: isUploading ? null : onChangePhoto,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF489F2A),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                icon: isUploading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      )
-                    : const Icon(Icons.photo_library_outlined, size: 18),
-                label: Text(
-                  isUploading ? 'Загрузка...' : 'Изменить фото',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
-  }
-
-  String _resolveRemoteImage(RestaurantProfileData profile) {
-    final rawImagePath = (profile.coverImageUrl ?? '').trim();
-
-    if (rawImagePath.isNotEmpty) {
-      final imageUrl = rawImagePath.startsWith('http')
-          ? rawImagePath
-          : '${AppConfig.baseUrl}$rawImagePath';
-
-      return '$imageUrl?t=$cacheBuster';
-    }
-
-    final legacy = profile.imageUrl?.trim() ?? '';
-    if (legacy.isNotEmpty) {
-      return '$legacy?t=$cacheBuster';
-    }
-
-    return '';
   }
 }
 
@@ -1271,213 +947,142 @@ class _PhotoPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 186,
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1B2A43), Color(0xFF0E1626)],
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 62,
-            height: 62,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
+    return ColoredBox(
+      color: const Color(0xFF172338),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
               Icons.image_not_supported_outlined,
               color: Color(0xFF7E8CA3),
-              size: 32,
+              size: 42,
             ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Фото ресторана не загружено',
-            style: TextStyle(
-              color: Color(0xFFA2AEC0),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF489F2A),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const Text(
-              'Добавить фото',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+            const SizedBox(height: 10),
+            Text(
+              context.tr(
+                'Фото ресторана не загружено',
+                'Мейрамхана фотосуреті жүктелмеген',
               ),
+              style: const TextStyle(color: Color(0xFFA2AEC0)),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
+class _ReadOnlyCard extends StatelessWidget {
+  const _ReadOnlyCard({
     required this.icon,
-    required this.iconBg,
-    required this.iconColor,
     required this.title,
     required this.value,
-    this.multiLine = false,
-    this.helperText,
   });
 
   final IconData icon;
-  final Color iconBg;
-  final Color iconColor;
   final String title;
   final String value;
-  final bool multiLine;
-  final String? helperText;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF151F32), Color(0xFF0D1524)],
+    return _BaseInfoCard(
+      icon: icon,
+      title: title,
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
         ),
-        border: Border.all(color: const Color(0xFF22324A)),
-      ),
-      child: Row(
-        crossAxisAlignment: multiLine
-            ? CrossAxisAlignment.start
-            : CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: iconBg,
-              shape: BoxShape.circle,
-              border: Border.all(color: iconColor.withOpacity(0.28)),
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Color(0xFF7F8BA0),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: multiLine ? 14 : 15,
-                    fontWeight: FontWeight.w700,
-                    height: multiLine ? 1.35 : 1.2,
-                  ),
-                ),
-                if (helperText?.trim().isNotEmpty == true) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    helperText!.trim(),
-                    style: const TextStyle(
-                      color: Color(0xFF93A0B4),
-                      fontSize: 12,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
-class _EditableInfoCard extends StatelessWidget {
-  const _EditableInfoCard({
+class _EditableCard extends StatelessWidget {
+  const _EditableCard({
     required this.icon,
-    required this.iconBg,
-    required this.iconColor,
     required this.title,
-    required this.controller,
     required this.value,
-    required this.hintText,
+    required this.controller,
     required this.enabled,
-    this.multiLine = false,
-    this.minLines,
+    required this.hint,
     this.maxLines = 1,
   });
 
   final IconData icon;
-  final Color iconBg;
-  final Color iconColor;
   final String title;
-  final TextEditingController controller;
   final String value;
-  final String hintText;
+  final TextEditingController controller;
   final bool enabled;
-  final bool multiLine;
-  final int? minLines;
+  final String hint;
   final int maxLines;
 
   @override
   Widget build(BuildContext context) {
-    final isEditMode = enabled;
+    return _BaseInfoCard(
+      icon: icon,
+      title: title,
+      child: enabled
+          ? TextField(
+              controller: controller,
+              maxLines: maxLines,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: hint,
+                filled: true,
+                fillColor: const Color(0xFF0E1626),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFF2A3A52)),
+                ),
+              ),
+            )
+          : Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+    );
+  }
+}
 
+class _BaseInfoCard extends StatelessWidget {
+  const _BaseInfoCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
+        color: const Color(0xFF131E2D),
         borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF151F32), Color(0xFF0D1524)],
-        ),
         border: Border.all(color: const Color(0xFF22324A)),
       ),
       child: Row(
-        crossAxisAlignment: multiLine
-            ? CrossAxisAlignment.start
-            : CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 42,
             height: 42,
-            decoration: BoxDecoration(
-              color: iconBg,
+            decoration: const BoxDecoration(
+              color: Color(0x33489F2A),
               shape: BoxShape.circle,
-              border: Border.all(color: iconColor.withOpacity(0.28)),
             ),
-            alignment: Alignment.center,
-            child: Icon(icon, color: iconColor, size: 20),
+            child: Icon(icon, color: const Color(0xFF65C044)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1489,62 +1094,10 @@ class _EditableInfoCard extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFF7F8BA0),
                     fontSize: 12,
-                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 6),
-                if (isEditMode)
-                  TextField(
-                    controller: controller,
-                    enabled: enabled,
-                    minLines: minLines,
-                    maxLines: maxLines,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      height: 1.25,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: hintText,
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF6F7C91),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFF0E1626),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 14,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFF2A3A52)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF489F2A),
-                          width: 1.4,
-                        ),
-                      ),
-                      disabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFF2A3A52)),
-                      ),
-                    ),
-                  )
-                else
-                  Text(
-                    value,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: multiLine ? 14 : 15,
-                      fontWeight: FontWeight.w700,
-                      height: multiLine ? 1.35 : 1.2,
-                    ),
-                  ),
+                child,
               ],
             ),
           ),
@@ -1556,198 +1109,84 @@ class _EditableInfoCard extends StatelessWidget {
 
 class _StatusCard extends StatelessWidget {
   const _StatusCard({required this.status});
-
   final String? status;
 
   @override
   Widget build(BuildContext context) {
-    final isOpen = (status ?? '').trim().toUpperCase() == 'OPEN';
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isOpen
-              ? [const Color(0x1A489F2A), const Color(0x143A7E21)]
-              : [const Color(0x1AF04444), const Color(0x14B72F2F)],
+    final open = (status ?? '').trim().toUpperCase() == 'OPEN';
+    return _BaseInfoCard(
+      icon: Icons.radio_button_checked_rounded,
+      title: context.tr('Статус ресторана', 'Мейрамхана мәртебесі'),
+      child: Text(
+        open ? context.tr('Открыт', 'Ашық') : context.tr('Закрыт', 'Жабық'),
+        style: TextStyle(
+          color: open ? const Color(0xFF65C044) : const Color(0xFFFF6E6E),
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
         ),
-        border: Border.all(
-          color: isOpen ? const Color(0x55489F2A) : const Color(0x55E45252),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: isOpen ? const Color(0x33489F2A) : const Color(0x33E45252),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isOpen
-                    ? const Color(0x66489F2A)
-                    : const Color(0x66E45252),
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.radio_button_checked_rounded,
-              color: isOpen ? const Color(0xFF65C044) : const Color(0xFFFF6E6E),
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Статус ресторана',
-              style: TextStyle(
-                color: Color(0xFF7F8BA0),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  color: isOpen
-                      ? const Color(0xFF65C044)
-                      : const Color(0xFFFF6E6E),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isOpen ? 'Открыт' : 'Закрыт',
-                style: TextStyle(
-                  color: isOpen
-                      ? const Color(0xFF65C044)
-                      : const Color(0xFFFF6E6E),
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
 }
 
-class _RestaurantBranch {
-  const _RestaurantBranch({
-    required this.id,
-    required this.nameRu,
-    this.nameKk,
-  });
-
-  final String id;
-  final String nameRu;
-  final String? nameKk;
-
-  String get displayName {
-    final ru = nameRu.trim();
-    if (ru.isNotEmpty) return ru;
-
-    final kk = nameKk?.trim();
-    if (kk != null && kk.isNotEmpty) return kk;
-
-    return id;
-  }
-}
-
-class _BranchSelectorCard extends StatelessWidget {
-  const _BranchSelectorCard({
-    required this.branches,
-    required this.selectedRestaurantId,
-    required this.isLoading,
+class _BranchCard extends StatelessWidget {
+  const _BranchCard({
+    required this.branch,
+    required this.branchCount,
+    required this.loading,
     required this.onTap,
   });
 
-  final List<_RestaurantBranch> branches;
-  final String? selectedRestaurantId;
-  final bool isLoading;
+  final _RestaurantBranch? branch;
+  final int branchCount;
+  final bool loading;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final selectedBranch = _resolveSelectedBranch();
-
-    if (!isLoading && selectedBranch == null) {
-      return const SizedBox.shrink();
-    }
-
-    final canChange = branches.length > 1;
-
+    final canChange = branchCount > 1;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: isLoading ? null : onTap,
+        onTap: loading || !canChange ? null : onTap,
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
+            color: const Color(0xFF131E2D),
             borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF151F32), Color(0xFF0D1524)],
-            ),
             border: Border.all(color: const Color(0xFF22324A)),
           ),
           child: Row(
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0x33489F2A),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0x55489F2A)),
-                ),
-                alignment: Alignment.center,
-                child: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Color(0xFF65C044),
-                          ),
-                        ),
-                      )
-                    : const Icon(
-                        Icons.account_tree_outlined,
-                        color: Color(0xFF65C044),
-                        size: 20,
-                      ),
-              ),
+              loading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(
+                      Icons.account_tree_outlined,
+                      color: Color(0xFF65C044),
+                    ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Филиал',
-                      style: TextStyle(
+                    Text(
+                      context.tr('Филиал', 'Филиал'),
+                      style: const TextStyle(
                         color: Color(0xFF7F8BA0),
                         fontSize: 12,
-                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      isLoading
-                          ? 'Загрузка филиалов...'
-                          : selectedBranch?.displayName ?? 'Филиал не выбран',
+                      loading
+                          ? context.tr('Загрузка...', 'Жүктелуде...')
+                          : branch?.displayName(context) ??
+                              context.tr('Не выбран', 'Таңдалмаған'),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -1755,13 +1194,15 @@ class _BranchSelectorCard extends StatelessWidget {
                       ),
                     ),
                     if (canChange) ...[
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Нажмите, чтобы сменить активный филиал',
-                        style: TextStyle(
+                      const SizedBox(height: 3),
+                      Text(
+                        context.tr(
+                          'Нажмите, чтобы сменить филиал',
+                          'Филиалды ауыстыру үшін басыңыз',
+                        ),
+                        style: const TextStyle(
                           color: Color(0xFF93A0B4),
-                          fontSize: 12,
-                          height: 1.3,
+                          fontSize: 11,
                         ),
                       ),
                     ],
@@ -1772,7 +1213,6 @@ class _BranchSelectorCard extends StatelessWidget {
                 const Icon(
                   Icons.keyboard_arrow_down_rounded,
                   color: Color(0xFF93A0B4),
-                  size: 24,
                 ),
             ],
           ),
@@ -1780,22 +1220,67 @@ class _BranchSelectorCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  _RestaurantBranch? _resolveSelectedBranch() {
-    if (branches.isEmpty) {
-      return null;
-    }
+class _RestaurantBranch {
+  const _RestaurantBranch({
+    required this.id,
+    required this.ordinal,
+    this.nameRu,
+    this.nameKk,
+  });
 
-    final selectedId = selectedRestaurantId?.trim();
+  final String id;
+  final int ordinal;
+  final String? nameRu;
+  final String? nameKk;
 
-    if (selectedId != null && selectedId.isNotEmpty) {
-      for (final branch in branches) {
-        if (branch.id == selectedId) {
-          return branch;
-        }
-      }
-    }
+  String displayName(BuildContext context) {
+    final primary = context.isKazakh ? nameKk : nameRu;
+    final fallback = context.isKazakh ? nameRu : nameKk;
+    final first = primary?.trim() ?? '';
+    if (first.isNotEmpty) return first;
+    final second = fallback?.trim() ?? '';
+    if (second.isNotEmpty) return second;
+    return '${context.tr('Филиал', 'Филиал')} $ordinal';
+  }
+}
 
-    return branches.first;
+class _ProfileMessageState extends StatelessWidget {
+  const _ProfileMessageState({
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final String message;
+  final String actionLabel;
+  final Future<void> Function() onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: onAction,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF489F2A),
+              ),
+              child: Text(actionLabel),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

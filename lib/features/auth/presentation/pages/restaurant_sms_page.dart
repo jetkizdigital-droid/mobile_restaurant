@@ -1,16 +1,6 @@
-// JETKIZ RESTAURANT APP
-// OTP verification page for restaurant auth.
-//
-// FLOW:
-// 1. request code on auth screen
-// 2. open this page
-// 3. verify code
-// 4. if isNewUser == true -> backend finishes registration
-// 5. if isNewUser == false -> normal login
-// 6. after successful login/register -> register FCM token for restaurant app
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/core/session/restaurant_context.dart';
 import 'package:jetkiz_restaurant/core/session/session_manager.dart';
@@ -42,48 +32,53 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
   bool _isLoading = false;
   bool _isResending = false;
 
-  bool get _isKazakh => widget.languageCode.trim().toLowerCase() == 'kk';
-
-  String _t(String ru, String kk) => _isKazakh ? kk : ru;
-
   @override
   void dispose() {
     _codeController.dispose();
     super.dispose();
   }
 
+  String _safeError(Object error, String ru, String kk) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dio') ||
+        lower.contains('socket') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http')) {
+      return context.tr(ru, kk);
+    }
+    return raw;
+  }
+
   Future<void> _verifyCode() async {
     final code = _codeController.text.trim();
-
     if (code.isEmpty) {
-      _showError(_t('Введите код', 'Кодты енгізіңіз'));
+      _showError(context.tr('Введите код', 'Кодты енгізіңіз'));
       return;
     }
-
-    if (_isLoading) {
-      return;
-    }
+    if (_isLoading) return;
 
     setState(() => _isLoading = true);
-
     try {
       final normalizedPhone = widget.phone.trim();
-      final isNewUser = widget.isNewUser;
       final registerData = widget.registerData;
 
-      if (isNewUser && registerData != null) {
+      if (widget.isNewUser && registerData != null) {
         await _authApi.registerRestaurant(
           phone: normalizedPhone,
           code: code,
           nameRu: (registerData['nameRu'] ?? '').toString().trim(),
           nameKk: (registerData['nameKk'] ?? '').toString().trim(),
           address: (registerData['address'] ?? '').toString().trim(),
-          workingHoursFrom: (registerData['workingHoursFrom'] ?? '')
-              .toString()
-              .trim(),
-          workingHoursTo: (registerData['workingHoursTo'] ?? '')
-              .toString()
-              .trim(),
+          workingHoursFrom:
+              (registerData['workingHoursFrom'] ?? '').toString().trim(),
+          workingHoursTo:
+              (registerData['workingHoursTo'] ?? '').toString().trim(),
         );
       } else {
         await _authApi.verifyCode(phone: normalizedPhone, code: code);
@@ -91,10 +86,9 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
 
       final me = await _authApi.getMe();
       final restaurantId = resolveRestaurantIdFromMe(me)?.trim();
-
       if (restaurantId == null || restaurantId.isEmpty) {
         _showError(
-          _t(
+          context.tr(
             'У аккаунта не найден ресторан',
             'Аккаунтқа тіркелген мейрамхана табылмады',
           ),
@@ -103,13 +97,11 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
       }
 
       SessionManager.restaurantId = restaurantId;
-
       await _registerPushTokenSafely();
-
       if (!mounted) return;
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const RestaurantShellPage()),
+        MaterialPageRoute<void>(builder: (_) => const RestaurantShellPage()),
         (route) => false,
       );
     } catch (error, stackTrace) {
@@ -117,12 +109,15 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
         debugPrint('RestaurantSmsPage.verifyCode failed: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
-
-      _showError(_cleanError(error));
+      _showError(
+        _safeError(
+          error,
+          'Не удалось подтвердить код. Проверьте код и попробуйте снова.',
+          'Кодты растау мүмкін болмады. Кодты тексеріп, қайта көріңіз.',
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -134,26 +129,21 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
         debugPrint('Restaurant push token registration failed: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
-
-      // Push registration must not block successful authentication.
     }
   }
 
   Future<void> _resendCode() async {
-    if (_isResending) {
-      return;
-    }
-
+    if (_isResending) return;
     setState(() => _isResending = true);
 
     try {
       await _authApi.requestCode(phone: widget.phone.trim());
-
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_t('Код отправлен повторно', 'Код қайта жіберілді')),
+          content: Text(
+            context.tr('Код отправлен повторно', 'Код қайта жіберілді'),
+          ),
         ),
       );
     } catch (error, stackTrace) {
@@ -161,50 +151,32 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
         debugPrint('RestaurantSmsPage.resendCode failed: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
-
-      _showError(_cleanError(error));
+      _showError(
+        _safeError(
+          error,
+          'Не удалось отправить код повторно. Попробуйте позже.',
+          'Кодты қайта жіберу мүмкін болмады. Кейінірек қайталап көріңіз.',
+        ),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _isResending = false);
-      }
+      if (mounted) setState(() => _isResending = false);
     }
-  }
-
-  String _cleanError(Object error) {
-    final message = error.toString().replaceFirst('Exception: ', '').trim();
-
-    if (message.isEmpty) {
-      return _t('Произошла ошибка', 'Қате орын алды');
-    }
-
-    return message;
   }
 
   void _showError(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFFB3261E),
-          content: Text(
-            message.trim().isEmpty
-                ? _t('Произошла ошибка', 'Қате орын алды')
-                : message.trim(),
-          ),
+          content: Text(message),
         ),
       );
   }
 
   @override
   Widget build(BuildContext context) {
-    const backgroundTop = Color(0xFF0E1A2C);
-    const backgroundBottom = Color(0xFF08101C);
-    const panelColor = Color(0xFF121B2C);
-    const borderColor = Color(0xFF22324A);
-    const textMuted = Color(0xFF95A0B3);
-
     return Scaffold(
       backgroundColor: const Color(0xFF09111C),
       body: Container(
@@ -212,7 +184,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [backgroundTop, Color(0xFF0B1524), backgroundBottom],
+            colors: [Color(0xFF0E1A2C), Color(0xFF0B1524), Color(0xFF08101C)],
           ),
         ),
         child: SafeArea(
@@ -225,73 +197,83 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
-                    color: panelColor.withValues(alpha: 0.92),
+                    color: const Color(0xFF121B2C),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: borderColor),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x22000000),
-                        blurRadius: 18,
-                        offset: Offset(0, 8),
-                      ),
-                    ],
+                    border: Border.all(color: const Color(0xFF22324A)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      IconButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () => Navigator.of(context).pop(),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: _isLoading
+                                ? null
+                                : AppLocaleController.instance.toggle,
+                            child: Text(
+                              context.isKazakh ? 'RU' : 'ҚАЗ',
+                              style: const TextStyle(
+                                color: Color(0xFF65C044),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _t('Подтверждение', 'Растау'),
+                        context.tr('Подтверждение', 'Растау'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 24,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _t(
+                        context.tr(
                           'Введите код подтверждения, отправленный на номер ${widget.phone}',
                           '${widget.phone} нөміріне жіберілген растау кодын енгізіңіз',
                         ),
                         style: const TextStyle(
-                          color: textMuted,
+                          color: Color(0xFF95A0B3),
                           fontSize: 13,
                           height: 1.45,
                         ),
                       ),
                       const SizedBox(height: 24),
-                      _FieldLabel(_t('Код подтверждения', 'Растау коды')),
+                      _FieldLabel(
+                        context.tr('Код подтверждения', 'Растау коды'),
+                      ),
                       const SizedBox(height: 8),
                       _DarkTextField(
                         controller: _codeController,
-                        hintText: _t('Введите код', 'Кодты енгізіңіз'),
+                        hintText: context.tr('Введите код', 'Кодты енгізіңіз'),
                         prefixIcon: Icons.verified_outlined,
                         keyboardType: TextInputType.number,
                         enabled: !_isLoading,
                         onSubmitted: (_) {
-                          if (!_isLoading) {
-                            _verifyCode();
-                          }
+                          if (!_isLoading) _verifyCode();
                         },
                       ),
                       const SizedBox(height: 18),
                       _GreenButton(
                         text: _isLoading
-                            ? _t('Проверка...', 'Тексерілуде...')
-                            : _t('Подтвердить', 'Растау'),
+                            ? context.tr('Проверка...', 'Тексерілуде...')
+                            : context.tr('Подтвердить', 'Растау'),
                         onPressed: _isLoading ? null : _verifyCode,
                       ),
                       const SizedBox(height: 14),
@@ -311,26 +293,23 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
                           ),
                           child: Text(
                             _isResending
-                                ? _t('Отправка...', 'Жіберілуде...')
-                                : _t(
+                                ? context.tr('Отправка...', 'Жіберілуде...')
+                                : context.tr(
                                     'Отправить код повторно',
                                     'Кодты қайта жіберу',
                                   ),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        _t(
+                        context.tr(
                           'Если код не пришёл, запросите его ещё раз.',
                           'Код келмесе, оны қайта сұратыңыз.',
                         ),
                         style: const TextStyle(
-                          color: textMuted,
+                          color: Color(0xFF95A0B3),
                           fontSize: 12,
                           height: 1.45,
                         ),
@@ -348,9 +327,8 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
 }
 
 class _FieldLabel extends StatelessWidget {
-  final String text;
-
   const _FieldLabel(this.text);
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -359,20 +337,13 @@ class _FieldLabel extends StatelessWidget {
       style: const TextStyle(
         color: Colors.white,
         fontSize: 13,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
 }
 
 class _DarkTextField extends StatelessWidget {
-  final TextEditingController controller;
-  final String hintText;
-  final IconData prefixIcon;
-  final TextInputType? keyboardType;
-  final bool enabled;
-  final ValueChanged<String>? onSubmitted;
-
   const _DarkTextField({
     required this.controller,
     required this.hintText,
@@ -381,6 +352,13 @@ class _DarkTextField extends StatelessWidget {
     this.enabled = true,
     this.onSubmitted,
   });
+
+  final TextEditingController controller;
+  final String hintText;
+  final IconData prefixIcon;
+  final TextInputType? keyboardType;
+  final bool enabled;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -401,12 +379,8 @@ class _DarkTextField extends StatelessWidget {
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hintText,
-          hintStyle: const TextStyle(color: Color(0xFF6F7D91), fontSize: 14),
-          prefixIcon: Icon(
-            prefixIcon,
-            color: const Color(0xFF8E9AAF),
-            size: 20,
-          ),
+          hintStyle: const TextStyle(color: Color(0xFF6F7D91)),
+          prefixIcon: Icon(prefixIcon, color: const Color(0xFF8E9AAF)),
           contentPadding: const EdgeInsets.symmetric(vertical: 15),
         ),
       ),
@@ -415,10 +389,10 @@ class _DarkTextField extends StatelessWidget {
 }
 
 class _GreenButton extends StatelessWidget {
+  const _GreenButton({required this.text, required this.onPressed});
+
   final String text;
   final VoidCallback? onPressed;
-
-  const _GreenButton({required this.text, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -429,9 +403,8 @@ class _GreenButton extends StatelessWidget {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF489F2A),
-          disabledBackgroundColor: const Color(
-            0xFF489F2A,
-          ).withValues(alpha: 0.6),
+          disabledBackgroundColor:
+              const Color(0xFF489F2A).withValues(alpha: 0.6),
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -440,7 +413,7 @@ class _GreenButton extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
         ),
       ),
     );

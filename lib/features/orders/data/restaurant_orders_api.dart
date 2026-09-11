@@ -117,6 +117,10 @@ class RestaurantOrdersApi {
       throw Exception('Для отклонения заказа укажите причину');
     }
 
+    if (normalizedStatus == 'CANCELED') {
+      throw Exception('Для отмены заказа укажите причину');
+    }
+
     final dynamic response = await _apiClient.patch(
       '/orders/$id/status',
       <String, dynamic>{'status': normalizedStatus},
@@ -156,6 +160,38 @@ class RestaurantOrdersApi {
     }
 
     throw Exception('Некорректный ответ сервера при отклонении заказа');
+  }
+
+  Future<Map<String, dynamic>> cancelOrder({
+    required String id,
+    required String reason,
+  }) async {
+    final normalizedReason = reason.trim();
+    if (normalizedReason.isEmpty) {
+      throw Exception('Причина отмены обязательна');
+    }
+    if (normalizedReason.length > 250) {
+      throw Exception('Причина отмены не должна превышать 250 символов');
+    }
+
+    final cms = RestaurantAppCmsSession.instance;
+    if (!cms.featureEnabled('REJECT_ORDERS_ENABLED')) {
+      throw Exception(
+        cms.featureReason('REJECT_ORDERS_ENABLED') ??
+            'Отмена заказов временно недоступна',
+      );
+    }
+
+    final dynamic response = await _apiClient.post(
+      '/orders/$id/cancel',
+      <String, dynamic>{'reason': normalizedReason},
+    );
+
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+
+    throw Exception('Некорректный ответ сервера при отмене заказа');
   }
 
   Future<Map<String, dynamic>> verifyPickup({

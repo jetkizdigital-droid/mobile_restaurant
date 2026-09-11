@@ -8,18 +8,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
+import 'core/localization/app_locale_controller.dart';
 import 'core/push/restaurant_push_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await AppLocaleController.instance.load();
 
   final firebaseReady = await _initializeFirebaseSafely();
   if (firebaseReady) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
-  // UI availability is more important than observability or push bootstrap.
-  // Neither Crashlytics nor FCM is allowed to hold the restaurant app startup.
   runApp(const JetkizRestaurantApp());
 
   if (firebaseReady) {

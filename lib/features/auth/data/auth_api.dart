@@ -1,20 +1,8 @@
-﻿import 'package:jetkiz_restaurant/core/network/api_client.dart';
+import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_storage.dart';
 
 // JETKIZ RESTAURANT APP
 // Backend-first auth API for restaurant mobile app.
-//
-// IMPORTANT:
-// - SMS code is requested through the shared endpoint: POST /auth/request-code
-// - Regular login is completed through: POST /auth/verify-code
-// - Restaurant registration is completed through: POST /restaurant-auth/register
-//
-// MULTI-BRANCH:
-// - /auth/me returns restaurants / restaurantIds / restaurantId
-// - AuthApi selects saved restaurantId if it is still available
-// - otherwise selects backend default restaurantId
-// - otherwise selects the first available restaurant
-// - ApiClient then sends x-restaurant-id automatically
 class AuthApi {
   final ApiClient _client = ApiClient.instance;
   final AuthStorage _storage = AuthStorage();
@@ -22,9 +10,7 @@ class AuthApi {
   Future<void> requestCode({required String phone}) async {
     await _client.post(
       '/auth/request-code',
-      {
-        'phone': phone,
-      },
+      {'phone': phone},
       authRequired: false,
     );
   }
@@ -35,20 +21,63 @@ class AuthApi {
   }) async {
     final response = await _client.post(
       '/auth/verify-code',
+      {'phone': phone, 'code': code},
+      authRequired: false,
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw Exception('Не удалось выполнить вход. Попробуйте ещё раз.');
+    }
+
+    await _saveTokensFromResponse(response);
+    await _syncSelectedRestaurantFromAuthPayload(response);
+    return response;
+  }
+
+  Future<Map<String, dynamic>> loginRestaurantWithPassword({
+    required String phone,
+    required String password,
+  }) async {
+    final response = await _client.post(
+      '/auth/restaurant/login-password',
+      {'phone': phone, 'password': password},
+      authRequired: false,
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw Exception('Не удалось выполнить вход. Попробуйте ещё раз.');
+    }
+
+    final passwordChangeRequired = response['passwordChangeRequired'] == true;
+    if (!passwordChangeRequired) {
+      await _saveTokensFromResponse(response);
+      await _syncSelectedRestaurantFromAuthPayload(response);
+    }
+
+    return response;
+  }
+
+  Future<Map<String, dynamic>> changeRestaurantTemporaryPassword({
+    required String phone,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final response = await _client.post(
+      '/auth/restaurant/change-password',
       {
         'phone': phone,
-        'code': code,
+        'currentPassword': currentPassword,
+        'newPassword': newPassword,
       },
       authRequired: false,
     );
 
     if (response is! Map<String, dynamic>) {
-      throw Exception('Некорректный формат ответа verify-code');
+      throw Exception('Не удалось изменить пароль. Попробуйте ещё раз.');
     }
 
     await _saveTokensFromResponse(response);
     await _syncSelectedRestaurantFromAuthPayload(response);
-
     return response;
   }
 
@@ -76,12 +105,11 @@ class AuthApi {
     );
 
     if (response is! Map<String, dynamic>) {
-      throw Exception('Некорректный формат ответа restaurant-auth/register');
+      throw Exception('Не удалось завершить регистрацию. Попробуйте ещё раз.');
     }
 
     await _saveTokensFromResponse(response);
     await _syncSelectedRestaurantFromAuthPayload(response);
-
     return response;
   }
 
@@ -89,11 +117,10 @@ class AuthApi {
     final response = await _client.get('/auth/me');
 
     if (response is! Map<String, dynamic>) {
-      throw Exception('Некорректный формат ответа auth/me');
+      throw Exception('Не удалось загрузить данные аккаунта.');
     }
 
     await _syncSelectedRestaurantFromAuthPayload(response);
-
     return response;
   }
 
@@ -147,17 +174,13 @@ class AuthApi {
     final ids = <String>{};
 
     final restaurantId = _readString(payload['restaurantId']);
-    if (restaurantId != null) {
-      ids.add(restaurantId);
-    }
+    if (restaurantId != null) ids.add(restaurantId);
 
     final restaurantIdsRaw = payload['restaurantIds'];
     if (restaurantIdsRaw is List) {
       for (final item in restaurantIdsRaw) {
         final id = _readString(item);
-        if (id != null) {
-          ids.add(id);
-        }
+        if (id != null) ids.add(id);
       }
     }
 
@@ -166,9 +189,7 @@ class AuthApi {
       for (final item in restaurantsRaw) {
         if (item is Map) {
           final id = _readString(item['id']);
-          if (id != null) {
-            ids.add(id);
-          }
+          if (id != null) ids.add(id);
         }
       }
     }
@@ -176,9 +197,7 @@ class AuthApi {
     final restaurantRaw = payload['restaurant'];
     if (restaurantRaw is Map) {
       final id = _readString(restaurantRaw['id']);
-      if (id != null) {
-        ids.add(id);
-      }
+      if (id != null) ids.add(id);
     }
 
     final accessesRaw = payload['restaurantAccesses'];
@@ -186,9 +205,7 @@ class AuthApi {
       for (final item in accessesRaw) {
         if (item is Map) {
           final id = _readString(item['restaurantId']);
-          if (id != null) {
-            ids.add(id);
-          }
+          if (id != null) ids.add(id);
         }
       }
     }
@@ -198,11 +215,7 @@ class AuthApi {
 
   String? _readString(dynamic value) {
     final normalized = value?.toString().trim();
-
-    if (normalized == null || normalized.isEmpty) {
-      return null;
-    }
-
+    if (normalized == null || normalized.isEmpty) return null;
     return normalized;
   }
 }

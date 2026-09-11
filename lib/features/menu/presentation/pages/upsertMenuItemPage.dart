@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 
 import '../../data/restaurant_menu_api.dart';
@@ -38,8 +39,8 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   bool _isAvailable = true;
   String? _errorText;
   String? _selectedCategoryId;
-  List<RestaurantMenuCategory> _categories = const [];
-  List<RestaurantMenuImage> _existingImages = const [];
+  List<RestaurantMenuCategory> _categories = const <RestaurantMenuCategory>[];
+  List<RestaurantMenuImage> _existingImages = const <RestaurantMenuImage>[];
 
   File? _mainImageFile;
   final List<File> _otherImageFiles = <File>[];
@@ -47,6 +48,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   bool get _isEdit => widget.item != null;
   int get _newImagesCount =>
       (_mainImageFile == null ? 0 : 1) + _otherImageFiles.length;
+  String _t(String ru, String kk) => context.tr(ru, kk);
 
   @override
   void initState() {
@@ -69,7 +71,6 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   void _fillInitialData() {
     final item = widget.item;
     if (item == null) return;
-
     _titleRuController.text = item.titleRu;
     _titleKkController.text = item.titleKk;
     _weightController.text = item.weight ?? '';
@@ -82,12 +83,53 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     _existingImages = List<RestaurantMenuImage>.from(item.images);
   }
 
+  String _safeError(Object error) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (lower.contains('максимум') && lower.contains('фото')) {
+      return _t(
+        'Можно загрузить максимум ${RestaurantMenuApi.maxProductImages} фото блюда.',
+        'Тағамға ең көбі ${RestaurantMenuApi.maxProductImages} фото жүктеуге болады.',
+      );
+    }
+    if (lower.contains('изображ') || lower.contains('image')) {
+      return _t(
+        'Не удалось подготовить фото. Выберите другое изображение.',
+        'Фотосуретті дайындау мүмкін болмады. Басқа суретті таңдаңыз.',
+      );
+    }
+    if (raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http 4') ||
+        lower.contains('http 5') ||
+        lower.contains('идентификатор')) {
+      return _t(
+        'Не удалось сохранить блюдо. Проверьте данные и повторите.',
+        'Тағамды сақтау мүмкін болмады. Деректерді тексеріп, қайталаңыз.',
+      );
+    }
+    return raw;
+  }
+
+  String _categoryTitle(RestaurantMenuCategory category) {
+    final primary = context.isKazakh ? category.titleKk : category.titleRu;
+    final fallback = context.isKazakh ? category.titleRu : category.titleKk;
+    if (primary.trim().isNotEmpty) return primary.trim();
+    if (fallback.trim().isNotEmpty) return fallback.trim();
+    return _t('Без названия', 'Атаусыз');
+  }
+
   Future<void> _loadCategories() async {
     try {
       final response = await _api.getMenu(widget.restaurantId);
       final parsed = RestaurantMenuData.fromJson(response);
       if (!mounted) return;
-
       setState(() {
         _categories = parsed.categories;
         if (_selectedCategoryId == null ||
@@ -96,11 +138,12 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
               _categories.isNotEmpty ? _categories.first.id : null;
         }
         _isLoading = false;
+        _errorText = null;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _errorText = _clean(error);
+        _errorText = _safeError(error);
         _isLoading = false;
       });
     }
@@ -108,15 +151,16 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
 
   Future<void> _pickMainImage() async {
     if (_isSaving) return;
-
     if (_mainImageFile == null &&
         _otherImageFiles.length >= RestaurantMenuApi.maxProductImages) {
       _message(
-        'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото',
+        _t(
+          'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото.',
+          'Тағамда ең көбі ${RestaurantMenuApi.maxProductImages} фото болуы мүмкін.',
+        ),
       );
       return;
     }
-
     final picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked == null || !mounted) return;
     setState(() => _mainImageFile = File(picked.path));
@@ -130,7 +174,10 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     final available = RestaurantMenuApi.maxProductImages - _newImagesCount;
     if (available <= 0) {
       _message(
-        'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото',
+        _t(
+          'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото.',
+          'Тағамда ең көбі ${RestaurantMenuApi.maxProductImages} фото болуы мүмкін.',
+        ),
       );
       return;
     }
@@ -140,17 +187,18 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
         picked.take(available).map((item) => File(item.path)),
       );
     });
-
     if (picked.length > available) {
       _message(
-        'Лишние фото не добавлены. Максимум — ${RestaurantMenuApi.maxProductImages}',
+        _t(
+          'Лишние фото не добавлены. Максимум — ${RestaurantMenuApi.maxProductImages}.',
+          'Артық фотолар қосылмады. Ең көбі — ${RestaurantMenuApi.maxProductImages}.',
+        ),
       );
     }
   }
 
   Future<void> _deleteExistingImage(RestaurantMenuImage image) async {
     if (!_isEdit || _isSaving) return;
-
     try {
       await _api.deleteImage(
         restaurantId: widget.restaurantId,
@@ -164,13 +212,12 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
             .toList(growable: false);
       });
     } catch (error) {
-      if (mounted) _message(_clean(error));
+      if (mounted) _message(_safeError(error));
     }
   }
 
   Future<void> _setExistingMain(RestaurantMenuImage image) async {
     if (!_isEdit || _isSaving || image.isMain) return;
-
     try {
       await _api.setMainImage(
         restaurantId: widget.restaurantId,
@@ -190,7 +237,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
             .toList(growable: false);
       });
     } catch (error) {
-      if (mounted) _message(_clean(error));
+      if (mounted) _message(_safeError(error));
     }
   }
 
@@ -200,8 +247,14 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     final cms = RestaurantAppCmsSession.instance;
     if (!cms.featureEnabled('MENU_EDIT_ENABLED')) {
       _message(
-        cms.featureReason('MENU_EDIT_ENABLED') ??
-            'Редактирование меню временно недоступно',
+        cms.featureReason(
+              'MENU_EDIT_ENABLED',
+              kazakh: context.isKazakh,
+            ) ??
+            _t(
+              'Редактирование меню временно недоступно.',
+              'Мәзірді өзгерту уақытша қолжетімсіз.',
+            ),
       );
       return;
     }
@@ -216,18 +269,29 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
 
     String? validation;
     if (categoryId.isEmpty) {
-      validation = 'Выберите категорию';
+      validation = _t('Выберите категорию.', 'Санатты таңдаңыз.');
     } else if (titleRu.isEmpty) {
-      validation = 'Введите название блюда на русском';
+      validation = _t(
+        'Введите название блюда на русском.',
+        'Тағамның орысша атауын енгізіңіз.',
+      );
     } else if (titleKk.isEmpty) {
-      validation = 'Введите название блюда на казахском';
+      validation = _t(
+        'Введите название блюда на казахском.',
+        'Тағамның қазақша атауын енгізіңіз.',
+      );
     } else if (price == null || price <= 0) {
-      validation = 'Введите корректную цену';
+      validation = _t('Введите корректную цену.', 'Дұрыс бағаны енгізіңіз.');
     } else if (!_isDrink && composition.isEmpty) {
-      validation = 'Для блюда состав обязателен';
+      validation = _t(
+        'Для блюда состав обязателен.',
+        'Тағам құрамы міндетті.',
+      );
     } else if (_newImagesCount > RestaurantMenuApi.maxProductImages) {
-      validation =
-          'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото';
+      validation = _t(
+        'У блюда может быть максимум ${RestaurantMenuApi.maxProductImages} фото.',
+        'Тағамда ең көбі ${RestaurantMenuApi.maxProductImages} фото болуы мүмкін.',
+      );
     }
 
     if (validation != null) {
@@ -256,12 +320,13 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       if (_isEdit) {
         productId = widget.item!.id;
         await _api.updateProduct(widget.restaurantId, productId, data);
-
         if (widget.item!.isAvailable != _isAvailable) {
           if (!cms.featureEnabled('STOP_LIST_ENABLED')) {
-            throw Exception(
-              cms.featureReason('STOP_LIST_ENABLED') ??
-                  'Стоп-лист временно недоступен',
+            throw _StopListUnavailable(
+              cms.featureReason(
+                'STOP_LIST_ENABLED',
+                kazakh: context.isKazakh,
+              ),
             );
           }
           await _api.updateAvailability(
@@ -273,17 +338,14 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       } else {
         final created = await _api.createProduct(widget.restaurantId, data);
         productId = created['id']?.toString().trim() ?? '';
-        if (productId.isEmpty) {
-          throw Exception(
-            'Блюдо создано, но сервер не вернул идентификатор. Обновите меню.',
-          );
-        }
-
+        if (productId.isEmpty) throw const _ProductCreatedWithoutId();
         if (!_isAvailable) {
           if (!cms.featureEnabled('STOP_LIST_ENABLED')) {
-            throw Exception(
-              cms.featureReason('STOP_LIST_ENABLED') ??
-                  'Стоп-лист временно недоступен',
+            throw _StopListUnavailable(
+              cms.featureReason(
+                'STOP_LIST_ENABLED',
+                kazakh: context.isKazakh,
+              ),
             );
           }
           await _api.updateAvailability(
@@ -295,20 +357,16 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       }
 
       if (_mainImageFile != null || _otherImageFiles.isNotEmpty) {
-        // Backend requires one main image whenever the gallery is replaced.
-        // If the user picked only additional photos, promote the first one.
-        final mainImage =
-            _mainImageFile ??
+        final mainImage = _mainImageFile ??
             (_otherImageFiles.isNotEmpty ? _otherImageFiles.first : null);
-        final otherImages = _mainImageFile != null
+        final others = _mainImageFile != null
             ? List<File>.from(_otherImageFiles)
             : _otherImageFiles.skip(1).toList(growable: false);
-
         await _api.replaceProductImages(
           restaurantId: widget.restaurantId,
           productId: productId,
           mainImage: mainImage,
-          otherImages: otherImages,
+          otherImages: others,
         );
       }
 
@@ -316,15 +374,24 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
+      final message = error is _StopListUnavailable
+          ? (error.message ??
+              _t(
+                'Стоп-лист временно недоступен.',
+                'Стоп-парақ уақытша қолжетімсіз.',
+              ))
+          : error is _ProductCreatedWithoutId
+              ? _t(
+                  'Блюдо создано. Обновите меню, чтобы увидеть его.',
+                  'Тағам жасалды. Оны көру үшін мәзірді жаңартыңыз.',
+                )
+              : _safeError(error);
       setState(() {
-        _errorText = _clean(error);
+        _errorText = message;
         _isSaving = false;
       });
     }
   }
-
-  String _clean(Object error) =>
-      error.toString().replaceFirst('Exception: ', '').trim();
 
   void _message(String message) {
     ScaffoldMessenger.of(context)
@@ -339,7 +406,11 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF020817),
         elevation: 0,
-        title: Text(_isEdit ? 'Редактировать блюдо' : 'Добавить блюдо'),
+        title: Text(
+          _isEdit
+              ? _t('Редактировать блюдо', 'Тағамды өзгерту')
+              : _t('Добавить блюдо', 'Тағам қосу'),
+        ),
       ),
       body: _isLoading
           ? const Center(
@@ -352,47 +423,65 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                   if (_categories.isEmpty)
                     _ErrorCard(
                       text: _errorText ??
-                          'Сначала создайте хотя бы одну категорию меню',
+                          _t(
+                            'Сначала создайте хотя бы одну категорию меню.',
+                            'Алдымен мәзірде кемінде бір санат жасаңыз.',
+                          ),
                       onRetry: _loadCategories,
                     )
                   else ...[
-                    _label('Категория *'),
+                    _label(_t('Категория *', 'Санат *')),
                     _dropdown(),
-                    _label('Название на русском *'),
-                    _field(_titleRuController, 'Например: Чизбургер'),
-                    _label('Название на казахском *'),
-                    _field(_titleKkController, 'Мысалы: Чизбургер'),
-                    _label('Граммовка / литраж'),
+                    _label(_t('Название на русском *', 'Орысша атауы *')),
+                    _field(
+                      _titleRuController,
+                      _t('Например: Чизбургер', 'Мысалы: Чизбургер'),
+                    ),
+                    _label(_t('Название на казахском *', 'Қазақша атауы *')),
+                    _field(
+                      _titleKkController,
+                      _t('Например: Чизбургер', 'Мысалы: Чизбургер'),
+                    ),
+                    _label(_t('Граммовка / литраж', 'Салмақ / көлем')),
                     _field(_weightController, '350 г / 0.5 л'),
                     _switchCard(
-                      title: 'Это напиток',
-                      subtitle: 'Для напитка состав необязателен',
+                      title: _t('Это напиток', 'Бұл сусын'),
+                      subtitle: _t(
+                        'Для напитка состав необязателен',
+                        'Сусын үшін құрамы міндетті емес',
+                      ),
                       value: _isDrink,
                       onChanged: (value) => setState(() => _isDrink = value),
                     ),
-                    _label(_isDrink ? 'Состав' : 'Состав *'),
+                    _label(_isDrink ? _t('Состав', 'Құрамы') : _t('Состав *', 'Құрамы *')),
                     _field(
                       _compositionController,
-                      'Говядина, сыр, соус, булочка...',
+                      _t(
+                        'Говядина, сыр, соус, булочка...',
+                        'Сиыр еті, ірімшік, соус, тоқаш...',
+                      ),
                       maxLines: 3,
                     ),
-                    _label('Цена (₸) *'),
+                    _label(_t('Цена (₸) *', 'Бағасы (₸) *')),
                     _field(
                       _priceController,
                       '1290',
                       keyboardType: TextInputType.number,
                     ),
-                    _label('Описание'),
+                    _label(_t('Описание', 'Сипаттама')),
                     _field(
                       _descriptionController,
-                      'Краткое описание для клиента',
+                      _t(
+                        'Краткое описание для клиента',
+                        'Клиентке арналған қысқаша сипаттама',
+                      ),
                       maxLines: 3,
                     ),
                     _switchCard(
-                      title: 'Доступно для заказа',
+                      title: _t('Доступно для заказа', 'Тапсырысқа қолжетімді'),
                       subtitle: _isAvailable
-                          ? 'Блюдо видно клиентам'
-                          : 'Блюдо находится в стоп-листе',
+                          ? _t('Блюдо видно клиентам', 'Тағам клиенттерге көрінеді')
+                          : _t('Блюдо находится в стоп-листе', 'Тағам стоп-парақта'),
                       value: _isAvailable,
                       onChanged: RestaurantAppCmsSession.instance
                               .featureEnabled('STOP_LIST_ENABLED')
@@ -400,16 +489,26 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                           : null,
                     ),
                     if (_isEdit && _existingImages.isNotEmpty) ...[
-                      _label('Текущие фото'),
+                      _label(_t('Текущие фото', 'Қазіргі фотолар')),
                       _existingImagesGrid(),
                     ],
-                    _label(_isEdit ? 'Новая галерея' : 'Фото блюда'),
+                    _label(
+                      _isEdit
+                          ? _t('Новая галерея', 'Жаңа галерея')
+                          : _t('Фото блюда', 'Тағам фотолары'),
+                    ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Text(
                         _isEdit
-                            ? 'Если выбрать новые фото, текущая галерея будет заменена. Максимум — ${RestaurantMenuApi.maxProductImages} фото.'
-                            : 'Можно добавить до ${RestaurantMenuApi.maxProductImages} фото блюда.',
+                            ? _t(
+                                'Если выбрать новые фото, текущая галерея будет заменена. Максимум — ${RestaurantMenuApi.maxProductImages} фото.',
+                                'Жаңа фотолар таңдалса, қазіргі галерея ауыстырылады. Ең көбі — ${RestaurantMenuApi.maxProductImages} фото.',
+                              )
+                            : _t(
+                                'Можно добавить до ${RestaurantMenuApi.maxProductImages} фото блюда.',
+                                'Тағамға ${RestaurantMenuApi.maxProductImages} фотоға дейін қосуға болады.',
+                              ),
                         style: const TextStyle(
                           color: Color(0xFF9AA7B9),
                           fontSize: 12,
@@ -430,14 +529,10 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                     const SizedBox(height: 18),
                     SizedBox(
                       height: 54,
-                      child: ElevatedButton(
+                      child: FilledButton(
                         onPressed: _isSaving ? null : _submit,
-                        style: ElevatedButton.styleFrom(
+                        style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF54B52E),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
                         ),
                         child: _isSaving
                             ? const SizedBox(
@@ -450,8 +545,8 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                               )
                             : Text(
                                 _isEdit
-                                    ? 'Сохранить изменения'
-                                    : 'Добавить блюдо',
+                                    ? _t('Сохранить изменения', 'Өзгерістерді сақтау')
+                                    : _t('Добавить блюдо', 'Тағам қосу'),
                                 style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,
@@ -477,7 +572,10 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
             .map(
               (item) => DropdownMenuItem<String>(
                 value: item.id,
-                child: Text(item.title, overflow: TextOverflow.ellipsis),
+                child: Text(
+                  _categoryTitle(item),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             )
             .toList(growable: false),
@@ -547,7 +645,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
           ),
           Switch.adaptive(
             value: value,
-            activeColor: const Color(0xFF54B52E),
+            activeThumbColor: const Color(0xFF54B52E),
             onChanged: _isSaving ? null : onChanged,
           ),
         ],
@@ -586,20 +684,25 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
               Positioned(
                 left: 4,
                 bottom: 4,
-                child: InkWell(
-                  onTap: () => _setExistingMain(image),
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: image.isMain
-                          ? const Color(0xFF54B52E)
-                          : Colors.black54,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      image.isMain ? Icons.star : Icons.star_border,
-                      color: Colors.white,
-                      size: 16,
+                child: Tooltip(
+                  message: image.isMain
+                      ? _t('Главное фото', 'Негізгі фото')
+                      : _t('Сделать главным', 'Негізгі ету'),
+                  child: InkWell(
+                    onTap: () => _setExistingMain(image),
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: image.isMain
+                            ? const Color(0xFF54B52E)
+                            : Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        image.isMain ? Icons.star : Icons.star_border,
+                        color: Colors.white,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -607,18 +710,21 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
               Positioned(
                 right: 4,
                 top: 4,
-                child: InkWell(
-                  onTap: () => _deleteExistingImage(image),
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(
-                      color: Colors.black54,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.white,
-                      size: 16,
+                child: Tooltip(
+                  message: _t('Удалить фото', 'Фотоны жою'),
+                  child: InkWell(
+                    onTap: () => _deleteExistingImage(image),
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.white,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -646,7 +752,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                 child: OutlinedButton.icon(
                   onPressed: _isSaving ? null : _pickMainImage,
                   icon: const Icon(Icons.photo_outlined),
-                  label: const Text('Главное фото'),
+                  label: Text(_t('Главное фото', 'Негізгі фото')),
                 ),
               ),
               const SizedBox(width: 10),
@@ -654,7 +760,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                 child: OutlinedButton.icon(
                   onPressed: _isSaving ? null : _pickOtherImages,
                   icon: const Icon(Icons.collections_outlined),
-                  label: const Text('Другие фото'),
+                  label: Text(_t('Другие фото', 'Басқа фотолар')),
                 ),
               ),
             ],
@@ -663,7 +769,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'Выбрано: $_newImagesCount/${RestaurantMenuApi.maxProductImages}',
+              '${_t('Выбрано', 'Таңдалды')}: $_newImagesCount/${RestaurantMenuApi.maxProductImages}',
               style: const TextStyle(
                 color: Color(0xFF93A0B4),
                 fontSize: 12,
@@ -675,7 +781,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
             const SizedBox(height: 10),
             _localImageTile(
               _mainImageFile!,
-              label: 'Главное',
+              label: _t('Главное', 'Негізгі'),
               onRemove: () => setState(() => _mainImageFile = null),
             ),
           ],
@@ -694,9 +800,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                 final file = _otherImageFiles[index];
                 return _localImageTile(
                   file,
-                  onRemove: () => setState(() {
-                    _otherImageFiles.removeAt(index);
-                  }),
+                  onRemove: () => setState(() => _otherImageFiles.removeAt(index)),
                 );
               },
             ),
@@ -797,9 +901,17 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   }
 }
 
+class _StopListUnavailable implements Exception {
+  const _StopListUnavailable(this.message);
+  final String? message;
+}
+
+class _ProductCreatedWithoutId implements Exception {
+  const _ProductCreatedWithoutId();
+}
+
 class _ErrorCard extends StatelessWidget {
   const _ErrorCard({required this.text, required this.onRetry});
-
   final String text;
   final Future<void> Function() onRetry;
 
@@ -820,7 +932,10 @@ class _ErrorCard extends StatelessWidget {
             style: const TextStyle(color: Colors.white70),
           ),
           const SizedBox(height: 12),
-          ElevatedButton(onPressed: onRetry, child: const Text('Повторить')),
+          FilledButton(
+            onPressed: onRetry,
+            child: Text(context.tr('Повторить', 'Қайталау')),
+          ),
         ],
       ),
     );

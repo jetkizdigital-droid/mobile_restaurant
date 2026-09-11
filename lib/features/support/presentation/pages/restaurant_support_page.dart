@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/cms/data/restaurant_app_cms_session.dart';
 import 'package:jetkiz_restaurant/features/cms/domain/restaurant_app_bootstrap.dart';
@@ -15,6 +16,9 @@ class RestaurantSupportPage extends StatefulWidget {
 }
 
 class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
+  static final Uri _jetkizSupportTelegram =
+      Uri.parse('https://t.me/+Bp5uSFWWlBkyYjMy');
+
   final RestaurantNotificationsApi _notificationsApi =
       RestaurantNotificationsApi();
   late final RestaurantApi _restaurantApi = RestaurantApi(ApiClient.instance);
@@ -23,7 +27,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   int _unreadCount = 0;
   bool _loading = true;
   bool _requestingDeletion = false;
-  String? _error;
+  bool _loadFailed = false;
 
   @override
   void initState() {
@@ -34,7 +38,7 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   Future<void> _load() async {
     setState(() {
       _loading = true;
-      _error = null;
+      _loadFailed = false;
     });
 
     try {
@@ -49,37 +53,34 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
         _unreadCount = results[1] as int;
         _loading = false;
       });
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _bootstrap = RestaurantAppCmsSession.instance.state.value;
-        _error = error.toString().replaceFirst('Exception: ', '').trim();
+        _loadFailed = true;
         _loading = false;
       });
     }
+  }
+
+  String? _localizedValue(String? ru, String? kk) {
+    final primary = (context.isKazakh ? kk : ru)?.trim();
+    if (primary != null && primary.isNotEmpty) return primary;
+    final fallback = (context.isKazakh ? ru : kk)?.trim();
+    return fallback == null || fallback.isEmpty ? null : fallback;
   }
 
   Future<void> _open(Uri uri) async {
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось открыть ссылку')),
+        SnackBar(
+          content: Text(
+            context.tr('Не удалось открыть ссылку', 'Сілтемені ашу мүмкін болмады'),
+          ),
+        ),
       );
     }
-  }
-
-  Future<void> _openRawUrl(String? value) async {
-    final url = value?.trim() ?? '';
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Telegram поддержки пока недоступен')),
-        );
-      }
-      return;
-    }
-    await _open(uri);
   }
 
   Future<void> _requestAccountDeletion() async {
@@ -88,18 +89,26 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Запросить удаление аккаунта?'),
-        content: const Text(
-          'Аккаунт не будет удалён автоматически. JETKIZ получит заявку и свяжется с вами для проверки активных заказов и дальнейших действий.',
+        title: Text(
+          context.tr(
+            'Запросить удаление аккаунта?',
+            'Аккаунтты жоюға өтініш беру керек пе?',
+          ),
+        ),
+        content: Text(
+          context.tr(
+            'Аккаунт не будет удалён автоматически. JETKIZ получит заявку и свяжется с вами для проверки активных заказов и дальнейших действий.',
+            'Аккаунт автоматты түрде жойылмайды. JETKIZ өтінішті қабылдап, белсенді тапсырыстарды тексеру және келесі қадамдар үшін сізбен байланысады.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Отмена'),
+            child: Text(context.tr('Отмена', 'Бас тарту')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Отправить запрос'),
+            child: Text(context.tr('Отправить запрос', 'Өтініш жіберу')),
           ),
         ],
       ),
@@ -107,44 +116,46 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
 
     if (confirmed != true || !mounted) return;
 
-    setState(() {
-      _requestingDeletion = true;
-    });
-
+    setState(() => _requestingDeletion = true);
     try {
       final response = await _restaurantApi.requestAccountDeletion();
       if (!mounted) return;
 
-      final message = response['message']?.toString().trim().isNotEmpty == true
-          ? response['message'].toString().trim()
-          : 'Запрос на удаление аккаунта отправлен';
+      final serverMessage = response['message']?.toString().trim() ?? '';
+      final message = !context.isKazakh && serverMessage.isNotEmpty
+          ? serverMessage
+          : context.tr(
+              'Запрос на удаление аккаунта отправлен',
+              'Аккаунтты жою туралы өтініш жіберілді',
+            );
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(message)));
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
             content: Text(
-              error.toString().replaceFirst('Exception: ', '').trim(),
+              context.tr(
+                'Не удалось отправить запрос. Проверьте интернет и попробуйте ещё раз.',
+                'Өтінішті жіберу мүмкін болмады. Интернетті тексеріп, қайта көріңіз.',
+              ),
             ),
           ),
         );
     } finally {
-      if (mounted) {
-        setState(() {
-          _requestingDeletion = false;
-        });
-      }
+      if (mounted) setState(() => _requestingDeletion = false);
     }
   }
 
   Future<void> _openNotifications() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RestaurantNotificationsPage()),
+      MaterialPageRoute<void>(
+        builder: (_) => const RestaurantNotificationsPage(),
+      ),
     );
     if (mounted) await _load();
   }
@@ -152,16 +163,36 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
   @override
   Widget build(BuildContext context) {
     final support = _bootstrap?.support;
+    final emergencyText = _localizedValue(
+      support?.emergencyTextRu,
+      support?.emergencyTextKk,
+    );
+    final workingHours = _localizedValue(
+      support?.workingHoursRu,
+      support?.workingHoursKk,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFF09111C),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: const Color(0xFF09111C),
-        title: const Text(
-          'Поддержка',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Text(
+          context.tr('Поддержка', 'Қолдау'),
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
+        actions: [
+          TextButton(
+            onPressed: AppLocaleController.instance.toggle,
+            child: Text(
+              context.isKazakh ? 'RU' : 'ҚАЗ',
+              style: const TextStyle(
+                color: Color(0xFF65C044),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -175,43 +206,57 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
                 padding: EdgeInsets.symmetric(vertical: 18),
                 child: LinearProgressIndicator(color: Color(0xFF489F2A)),
               ),
-            if (_error != null)
+            if (_loadFailed)
               _MessageCard(
-                icon: Icons.cloud_off_rounded,
-                title: 'Не удалось обновить контакты',
-                body: _error!,
+                icon: Icons.wifi_off_rounded,
+                title: context.tr(
+                  'Не удалось обновить информацию',
+                  'Ақпаратты жаңарту мүмкін болмады',
+                ),
+                body: context.tr(
+                  'Часть данных может быть устаревшей. Проверьте интернет и потяните экран вниз, чтобы повторить.',
+                  'Кейбір деректер ескірген болуы мүмкін. Интернетті тексеріп, қайталау үшін экранды төмен тартыңыз.',
+                ),
               ),
-            if ((support?.emergencyTextRu ?? '').trim().isNotEmpty)
+            if (emergencyText != null)
               _MessageCard(
                 icon: Icons.campaign_rounded,
-                title: 'Важная информация',
-                body: support!.emergencyTextRu!.trim(),
+                title: context.tr('Важная информация', 'Маңызды ақпарат'),
+                body: emergencyText,
               ),
             _SupportAction(
               icon: Icons.send_rounded,
-              title: 'Поддержка JETKIZ',
-              subtitle: 'Открыть группу поддержки в Telegram',
-              enabled: (support?.telegramUrl ?? '').trim().isNotEmpty,
-              onTap: () => _openRawUrl(support?.telegramUrl),
+              title: context.tr('Поддержка JETKIZ', 'JETKIZ қолдауы'),
+              subtitle: context.tr(
+                'Написать команде JETKIZ в Telegram',
+                'JETKIZ командасына Telegram арқылы жазу',
+              ),
+              onTap: () => _open(_jetkizSupportTelegram),
             ),
             _SupportAction(
               icon: Icons.notifications_rounded,
-              title: 'Уведомления',
+              title: context.tr('Уведомления', 'Хабарландырулар'),
               subtitle: _unreadCount > 0
-                  ? 'Непрочитанных: $_unreadCount'
-                  : 'Все сообщения JETKIZ',
+                  ? context.tr(
+                      'Непрочитанных: $_unreadCount',
+                      'Оқылмаған: $_unreadCount',
+                    )
+                  : context.tr('Все сообщения JETKIZ', 'JETKIZ хабарламалары'),
               onTap: _openNotifications,
             ),
-            if ((support?.workingHoursRu ?? '').trim().isNotEmpty)
+            if (workingHours != null)
               _MessageCard(
                 icon: Icons.schedule_rounded,
-                title: 'Время работы поддержки',
-                body: support!.workingHoursRu!.trim(),
+                title: context.tr(
+                  'Время работы поддержки',
+                  'Қолдау қызметінің жұмыс уақыты',
+                ),
+                body: workingHours,
               ),
             const SizedBox(height: 8),
-            const Text(
-              'Документы и аккаунт',
-              style: TextStyle(
+            Text(
+              context.tr('Документы и аккаунт', 'Құжаттар және аккаунт'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
@@ -220,23 +265,38 @@ class _RestaurantSupportPageState extends State<RestaurantSupportPage> {
             const SizedBox(height: 10),
             _SupportAction(
               icon: Icons.privacy_tip_outlined,
-              title: 'Политика конфиденциальности',
-              subtitle: 'Открыть jetkiz.asia/privacy',
+              title: context.tr(
+                'Политика конфиденциальности',
+                'Құпиялылық саясаты',
+              ),
+              subtitle: context.tr('Открыть документ', 'Құжатты ашу'),
               onTap: () => _open(Uri.parse('https://jetkiz.asia/privacy')),
             ),
             _SupportAction(
               icon: Icons.info_outline_rounded,
-              title: 'Как удаляются аккаунт и данные',
-              subtitle: 'Открыть jetkiz.asia/account-deletion',
+              title: context.tr(
+                'Удаление аккаунта и данных',
+                'Аккаунт пен деректерді жою',
+              ),
+              subtitle: context.tr(
+                'Как проходит удаление аккаунта',
+                'Аккаунтты жою тәртібі',
+              ),
               onTap: () =>
                   _open(Uri.parse('https://jetkiz.asia/account-deletion')),
             ),
             _SupportAction(
               icon: Icons.delete_outline_rounded,
-              title: 'Запросить удаление аккаунта',
+              title: context.tr(
+                'Запросить удаление аккаунта',
+                'Аккаунтты жоюға өтініш беру',
+              ),
               subtitle: _requestingDeletion
-                  ? 'Отправляем запрос…'
-                  : 'Отправить официальный запрос в JETKIZ',
+                  ? context.tr('Отправляем запрос…', 'Өтініш жіберілуде…')
+                  : context.tr(
+                      'Отправить запрос команде JETKIZ',
+                      'JETKIZ командасына өтініш жіберу',
+                    ),
               enabled: !_requestingDeletion,
               onTap: _requestAccountDeletion,
             ),
@@ -380,7 +440,10 @@ class _MessageCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   body,
-                  style: const TextStyle(color: Color(0xFFB7C0CE), height: 1.4),
+                  style: const TextStyle(
+                    color: Color(0xFFB7C0CE),
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),

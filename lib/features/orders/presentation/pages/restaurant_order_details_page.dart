@@ -1,19 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
 import 'package:jetkiz_restaurant/features/orders/domain/restaurant_order_details.dart';
-
-// JETKIZ RESTAURANT APP
-// Restaurant order details page.
-//
-// BACKEND:
-// - GET /orders/:id
-// - POST /orders/:id/verify-pickup
-//
-// PICKUP:
-// Restaurant issues pickup orders only through client pickup code.
-// Never mark PICKUP as DELIVERED through regular status update from this screen.
 
 class RestaurantOrderDetailsPage extends StatefulWidget {
   const RestaurantOrderDetailsPage({
@@ -35,6 +25,8 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   Future<RestaurantOrderDetails>? _orderFuture;
   bool _isVerifyingPickup = false;
 
+  String _t(String ru, String kk) => context.tr(ru, kk);
+
   @override
   void initState() {
     super.initState();
@@ -44,9 +36,7 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   }
 
   void _loadOrder() {
-    setState(() {
-      _orderFuture = _getOrderDetails();
-    });
+    setState(() => _orderFuture = _getOrderDetails());
   }
 
   Future<void> _refresh() async {
@@ -55,19 +45,14 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   }
 
   Future<RestaurantOrderDetails> _getOrderDetails() async {
-    final dynamic response = await _apiClient.get('/orders/${widget.orderId}');
-
+    final response = await _apiClient.get('/orders/${widget.orderId}');
     if (response is Map<String, dynamic>) {
       return RestaurantOrderDetails.fromJson(response);
     }
-
     if (response is Map) {
-      return RestaurantOrderDetails.fromJson(
-        Map<String, dynamic>.from(response),
-      );
+      return RestaurantOrderDetails.fromJson(Map<String, dynamic>.from(response));
     }
-
-    throw Exception('Некорректный ответ по заказу');
+    throw const _OrderDetailsLoadException();
   }
 
   Future<void> _showPickupCodeSheet(RestaurantOrderDetails order) async {
@@ -75,84 +60,145 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) {
-        return _PickupCodeBottomSheet(
-          cleanErrorMessage: _cleanErrorMessage,
-          onSubmit: (pickupCode) async {
-            if (_isVerifyingPickup) {
-              return _PickupIssueResult.none;
-            }
+      builder: (_) => _PickupCodeBottomSheet(
+        onSubmit: (pickupCode) async {
+          if (_isVerifyingPickup) return _PickupIssueResult.none;
+          if (mounted) {
+            setState(() => _isVerifyingPickup = true);
+          } else {
+            _isVerifyingPickup = true;
+          }
 
+          try {
+            await _ordersApi.verifyPickup(id: order.id, pickupCode: pickupCode);
+            return _PickupIssueResult.issued;
+          } catch (error) {
+            if (_isAlreadyIssuedPickupError(error)) {
+              return _PickupIssueResult.alreadyIssued;
+            }
+            rethrow;
+          } finally {
             if (mounted) {
-              setState(() {
-                _isVerifyingPickup = true;
-              });
+              setState(() => _isVerifyingPickup = false);
             } else {
-              _isVerifyingPickup = true;
+              _isVerifyingPickup = false;
             }
-
-            try {
-              await _ordersApi.verifyPickup(
-                id: order.id,
-                pickupCode: pickupCode,
-              );
-
-              return _PickupIssueResult.issued;
-            } catch (error) {
-              if (_isAlreadyIssuedPickupError(error)) {
-                return _PickupIssueResult.alreadyIssued;
-              }
-
-              rethrow;
-            } finally {
-              if (mounted) {
-                setState(() {
-                  _isVerifyingPickup = false;
-                });
-              } else {
-                _isVerifyingPickup = false;
-              }
-            }
-          },
-        );
-      },
+          }
+        },
+      ),
     );
 
-    if (!mounted || result == null || result == _PickupIssueResult.none) {
-      return;
-    }
+    if (!mounted || result == null || result == _PickupIssueResult.none) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           result == _PickupIssueResult.alreadyIssued
-              ? 'Заказ уже выдан'
-              : 'Заказ выдан',
+              ? _t('Заказ уже выдан', 'Тапсырыс бұрын берілген')
+              : _t('Заказ выдан', 'Тапсырыс берілді'),
         ),
         backgroundColor: const Color(0xFF489F2A),
       ),
     );
-
     _loadOrder();
   }
-  String _cleanErrorMessage(Object error) {
-    final message = error.toString().replaceFirst('Exception: ', '').trim();
 
-    if (message.isEmpty) {
-      return 'Не удалось подтвердить выдачу';
+  String _rawError(Object error) =>
+      error.toString().replaceFirst('Exception: ', '').trim();
+
+  String _safeError(Object error) {
+    final raw = _rawError(error);
+    final lower = raw.toLowerCase();
+    if (error is _OrderDetailsLoadException ||
+        raw.isEmpty ||
+        raw.length > 180 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http 4') ||
+        lower.contains('http 5') ||
+        lower.contains('current status')) {
+      return _t(
+        'Не удалось загрузить заказ. Проверьте интернет и повторите.',
+        'Тапсырысты жүктеу мүмкін болмады. Интернетті тексеріп, қайталаңыз.',
+      );
     }
-
-    return message;
+    return raw;
   }
 
   bool _isAlreadyIssuedPickupError(Object error) {
-    final message = _cleanErrorMessage(error).toLowerCase();
-
+    final message = _rawError(error).toLowerCase();
     return message.contains('current status: delivered') ||
         message.contains('already delivered') ||
         message.contains('already verified') ||
         message.contains('уже выдан') ||
         message.contains('уже доставлен');
+  }
+
+  String _customerName(RestaurantOrderDetails order) {
+    final user = order.user;
+    if (user != null) {
+      final full = <String>[
+        user.firstName?.trim() ?? '',
+        user.lastName?.trim() ?? '',
+      ].where((value) => value.isNotEmpty).join(' ');
+      if (full.isNotEmpty) return full;
+    }
+    return _t('Клиент', 'Клиент');
+  }
+
+  String _customerPhone(RestaurantOrderDetails order) {
+    final direct = order.phone?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+    final nested = order.user?.phone?.trim() ?? '';
+    if (nested.isNotEmpty) return nested;
+    return _t('Не указан', 'Көрсетілмеген');
+  }
+
+  String _courierName(RestaurantOrderDetailsCourier courier) {
+    final full = <String>[
+      courier.firstName?.trim() ?? '',
+      courier.lastName?.trim() ?? '',
+    ].where((value) => value.isNotEmpty).join(' ');
+    if (full.isNotEmpty) return full;
+    return _t('Курьер', 'Курьер');
+  }
+
+  String _paymentStatus(String? value) {
+    switch ((value ?? '').trim().toUpperCase()) {
+      case 'PAID':
+        return _t('Оплачено', 'Төленді');
+      case 'PENDING':
+        return _t('Ожидает оплаты', 'Төлем күтілуде');
+      case 'FAILED':
+        return _t('Оплата не прошла', 'Төлем орындалмады');
+      case 'REFUNDED':
+        return _t('Возвращено', 'Қайтарылды');
+      case 'CANCELED':
+      case 'CANCELLED':
+        return _t('Отменено', 'Бас тартылды');
+      default:
+        return _t('Не указан', 'Көрсетілмеген');
+    }
+  }
+
+  String _paymentMethod(String? value) {
+    switch ((value ?? '').trim().toUpperCase()) {
+      case 'CASH':
+        return _t('Наличными', 'Қолма-қол');
+      case 'CARD':
+      case 'ONLINE':
+      case 'PAYLINK':
+        return _t('Онлайн', 'Онлайн');
+      case 'KASPI':
+      case 'KASPI_PAY':
+        return 'Kaspi';
+      default:
+        return _t('Не указана', 'Көрсетілмеген');
+    }
   }
 
   @override
@@ -163,9 +209,9 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
         backgroundColor: const Color(0xFF09111C),
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'Детали заказа',
-          style: TextStyle(
+        title: Text(
+          _t('Детали заказа', 'Тапсырыс мәліметтері'),
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
           ),
@@ -176,16 +222,12 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
           future: _orderFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
               return _DetailsErrorState(
-                message: snapshot.error
-                    .toString()
-                    .replaceFirst('Exception: ', ''),
+                message: _safeError(snapshot.error!),
                 onRetry: _loadOrder,
               );
             }
@@ -193,7 +235,7 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
             final order = snapshot.data;
             if (order == null) {
               return _DetailsErrorState(
-                message: 'Заказ не найден',
+                message: _t('Заказ не найден', 'Тапсырыс табылмады'),
                 onRetry: _loadOrder,
               );
             }
@@ -212,8 +254,8 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                             Expanded(
                               child: Text(
                                 order.number != null
-                                    ? 'Заказ #${order.number}'
-                                    : 'Заказ',
+                                    ? '${_t('Заказ', 'Тапсырыс')} #${order.number}'
+                                    : _t('Заказ', 'Тапсырыс'),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 20,
@@ -231,47 +273,48 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                         const SizedBox(height: 12),
                         _FulfillmentBadge(isPickup: order.isPickup),
                         const SizedBox(height: 14),
-                        _InfoRow(label: 'ID', value: order.id),
                         _InfoRow(
-                          label: 'Статус оплаты',
-                          value: order.paymentStatus ?? 'Не указан',
+                          label: _t('Статус оплаты', 'Төлем мәртебесі'),
+                          value: _paymentStatus(order.paymentStatus),
                         ),
                         _InfoRow(
-                          label: 'Оплата',
-                          value: order.paymentMethod ?? 'Не указана',
+                          label: _t('Оплата', 'Төлем'),
+                          value: _paymentMethod(order.paymentMethod),
                         ),
                         _InfoRow(
-                          label: 'Подытог',
+                          label: _t('Подытог', 'Аралық сома'),
                           value: '${order.subtotal} ₸',
                         ),
                         _InfoRow(
-                          label: 'Доставка',
+                          label: _t('Доставка', 'Жеткізу'),
                           value: order.isPickup
-                              ? 'Самовывоз'
+                              ? _t('Самовывоз', 'Өзі алып кету')
                               : '${order.deliveryFee} ₸',
                         ),
                         _InfoRow(
-                          label: 'Итого',
+                          label: _t('Итого', 'Барлығы'),
                           value: '${order.total} ₸',
                         ),
                         if (order.createdAt != null)
                           _InfoRow(
-                            label: 'Создан',
+                            label: _t('Создан', 'Құрылды'),
                             value: _formatDateTime(order.createdAt!.toLocal()),
                           ),
                         if (order.readyAt != null)
                           _InfoRow(
-                            label: order.isPickup ? 'Готов к выдаче' : 'Готов',
+                            label: order.isPickup
+                                ? _t('Готов к выдаче', 'Беруге дайын')
+                                : _t('Готов', 'Дайын'),
                             value: _formatDateTime(order.readyAt!.toLocal()),
                           ),
                         if (order.promisedAt != null)
                           _InfoRow(
-                            label: 'Обещано к',
+                            label: _t('Обещано к', 'Дайын болу уақыты'),
                             value: _formatDateTime(order.promisedAt!.toLocal()),
                           ),
                         if (order.pickupCodeVerifiedAt != null)
                           _InfoRow(
-                            label: 'Выдан',
+                            label: _t('Выдан', 'Берілді'),
                             value: _formatDateTime(
                               order.pickupCodeVerifiedAt!.toLocal(),
                             ),
@@ -284,39 +327,40 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const _SectionTitle('Клиент'),
+                        _SectionTitle(_t('Клиент', 'Клиент')),
                         const SizedBox(height: 12),
                         _InfoRow(
-                          label: 'Имя',
-                          value: order.user?.displayName ?? 'Не указан',
+                          label: _t('Имя', 'Аты'),
+                          value: _customerName(order),
                         ),
                         _InfoRow(
-                          label: 'Телефон',
-                          value: (order.phone ?? '').trim().isNotEmpty
-                              ? order.phone!.trim()
-                              : ((order.user?.phone ?? '').trim().isNotEmpty
-                                  ? order.user!.phone!.trim()
-                                  : 'Не указан'),
+                          label: _t('Телефон', 'Телефон'),
+                          value: _customerPhone(order),
                         ),
                         if (order.isPickup)
-                          const _InfoRow(
-                            label: 'Получение',
-                            value: 'Клиент заберёт сам',
+                          _InfoRow(
+                            label: _t('Получение', 'Алу'),
+                            value: _t(
+                              'Клиент заберёт сам',
+                              'Клиент өзі алып кетеді',
+                            ),
                           )
                         else ...[
                           _InfoRow(
-                            label: 'Оставить у двери',
-                            value: order.leaveAtDoor ? 'Да' : 'Нет',
+                            label: _t('Оставить у двери', 'Есік алдына қалдыру'),
+                            value: order.leaveAtDoor
+                                ? _t('Да', 'Иә')
+                                : _t('Нет', 'Жоқ'),
                           ),
                           if ((order.address ?? '').trim().isNotEmpty)
                             _InfoRow(
-                              label: 'Адрес',
+                              label: _t('Адрес', 'Мекенжай'),
                               value: order.address!.trim(),
                             ),
                         ],
                         if ((order.comment ?? '').trim().isNotEmpty)
                           _InfoRow(
-                            label: 'Комментарий',
+                            label: _t('Комментарий', 'Пікір'),
                             value: order.comment!.trim(),
                           ),
                       ],
@@ -328,45 +372,43 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                       order: order,
                       onIssuePressed:
                           order.isReadyForPickupIssue && !_isVerifyingPickup
-                          ? () => _showPickupCodeSheet(order)
-                          : null,
+                              ? () => _showPickupCodeSheet(order)
+                              : null,
                     ),
                   ],
-                  const SizedBox(height: 14),
                   if (order.isDelivery && order.courier != null) ...[
+                    const SizedBox(height: 14),
                     _SectionCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const _SectionTitle('Курьер'),
+                          _SectionTitle(_t('Курьер', 'Курьер')),
                           const SizedBox(height: 12),
                           _InfoRow(
-                            label: 'Имя',
-                            value: order.courier!.displayName,
+                            label: _t('Имя', 'Аты'),
+                            value: _courierName(order.courier!),
                           ),
                           _InfoRow(
-                            label: 'Телефон',
-                            value: (order.courier!.phone ?? '')
-                                    .trim()
-                                    .isNotEmpty
+                            label: _t('Телефон', 'Телефон'),
+                            value: (order.courier!.phone ?? '').trim().isNotEmpty
                                 ? order.courier!.phone!.trim()
-                                : 'Не указан',
+                                : _t('Не указан', 'Көрсетілмеген'),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
                   ],
+                  const SizedBox(height: 14),
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const _SectionTitle('Состав заказа'),
+                        _SectionTitle(_t('Состав заказа', 'Тапсырыс құрамы')),
                         const SizedBox(height: 12),
                         if (order.items.isEmpty)
-                          const Text(
-                            'Позиции отсутствуют',
-                            style: TextStyle(color: Colors.white70),
+                          Text(
+                            _t('Позиции отсутствуют', 'Тауарлар жоқ'),
+                            style: const TextStyle(color: Colors.white70),
                           )
                         else
                           ...order.items.map(
@@ -395,20 +437,16 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   static String _two(int value) => value.toString().padLeft(2, '0');
 }
 
-enum _PickupIssueResult {
-  none,
-  issued,
-  alreadyIssued,
+class _OrderDetailsLoadException implements Exception {
+  const _OrderDetailsLoadException();
 }
 
+enum _PickupIssueResult { none, issued, alreadyIssued }
+
 class _PickupCodeBottomSheet extends StatefulWidget {
-  const _PickupCodeBottomSheet({
-    required this.onSubmit,
-    required this.cleanErrorMessage,
-  });
+  const _PickupCodeBottomSheet({required this.onSubmit});
 
   final Future<_PickupIssueResult> Function(String pickupCode) onSubmit;
-  final String Function(Object error) cleanErrorMessage;
 
   @override
   State<_PickupCodeBottomSheet> createState() => _PickupCodeBottomSheetState();
@@ -416,7 +454,6 @@ class _PickupCodeBottomSheet extends StatefulWidget {
 
 class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
   final TextEditingController _controller = TextEditingController();
-
   bool _isSubmitting = false;
   String? _errorText;
 
@@ -426,21 +463,40 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
     super.dispose();
   }
 
+  String _safeIssueError(Object error) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 160 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http') ||
+        lower.contains('current status')) {
+      return context.tr(
+        'Не удалось подтвердить выдачу. Проверьте код и попробуйте снова.',
+        'Беруді растау мүмкін болмады. Кодты тексеріп, қайта көріңіз.',
+      );
+    }
+    return raw;
+  }
+
   Future<void> _submit() async {
     if (_isSubmitting) return;
-
     final pickupCode = _controller.text.trim();
-
     if (pickupCode.isEmpty) {
-      setState(() {
-        _errorText = 'Введите код клиента';
-      });
+      setState(() => _errorText = context.tr('Введите код клиента', 'Клиент кодын енгізіңіз'));
       return;
     }
-
     if (pickupCode.length != 4) {
       setState(() {
-        _errorText = 'Код должен состоять из 4 цифр';
+        _errorText = context.tr(
+          'Код должен состоять из 4 цифр',
+          'Код 4 цифрдан тұруы керек',
+        );
       });
       return;
     }
@@ -449,27 +505,20 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
       _isSubmitting = true;
       _errorText = null;
     });
-
     try {
       final result = await widget.onSubmit(pickupCode);
-
       if (!mounted) return;
-
       if (result == _PickupIssueResult.issued ||
           result == _PickupIssueResult.alreadyIssued) {
         Navigator.of(context).pop(result);
         return;
       }
-
-      setState(() {
-        _isSubmitting = false;
-      });
+      setState(() => _isSubmitting = false);
     } catch (error) {
       if (!mounted) return;
-
       setState(() {
         _isSubmitting = false;
-        _errorText = widget.cleanErrorMessage(error);
+        _errorText = _safeIssueError(error);
       });
     }
   }
@@ -477,7 +526,6 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
@@ -485,9 +533,7 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
         decoration: const BoxDecoration(
           color: Color(0xFF131E2D),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(24),
-          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
           top: false,
@@ -506,18 +552,21 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
                 ),
               ),
               const SizedBox(height: 18),
-              const Text(
-                'Подтвердить выдачу',
-                style: TextStyle(
+              Text(
+                context.tr('Подтвердить выдачу', 'Беруді растау'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Введите 4-значный код, который клиент показывает при получении заказа.',
-                style: TextStyle(
+              Text(
+                context.tr(
+                  'Введите 4-значный код, который клиент показывает при получении заказа.',
+                  'Клиент тапсырысты алған кезде көрсететін 4 таңбалы кодты енгізіңіз.',
+                ),
+                style: const TextStyle(
                   color: Colors.white70,
                   fontSize: 14,
                   height: 1.35,
@@ -557,33 +606,16 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF26364A),
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF26364A)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF26364A),
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF26364A)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(
                       color: Color(0xFF70D74D),
-                      width: 1.4,
-                    ),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFFF8A8A),
-                    ),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFFF8A8A),
                       width: 1.4,
                     ),
                   ),
@@ -613,9 +645,9 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          'Подтвердить',
-                          style: TextStyle(
+                      : Text(
+                          context.tr('Подтвердить', 'Растау'),
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
                           ),
@@ -629,6 +661,7 @@ class _PickupCodeBottomSheetState extends State<_PickupCodeBottomSheet> {
     );
   }
 }
+
 class _PickupIssueCard extends StatelessWidget {
   const _PickupIssueCard({
     required this.order,
@@ -641,16 +674,24 @@ class _PickupIssueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = order.isIssuedPickup
-        ? 'Заказ выдан'
+        ? context.tr('Заказ выдан', 'Тапсырыс берілді')
         : order.isReadyForPickupIssue
-            ? 'Готов к выдаче'
-            : 'Самовывоз';
-
+            ? context.tr('Готов к выдаче', 'Беруге дайын')
+            : context.tr('Самовывоз', 'Өзі алып кету');
     final description = order.isIssuedPickup
-        ? 'Код клиента подтверждён. Заказ закрыт как выданный.'
+        ? context.tr(
+            'Код клиента подтверждён. Заказ закрыт как выданный.',
+            'Клиент коды расталды. Тапсырыс берілген ретінде жабылды.',
+          )
         : order.isReadyForPickupIssue
-            ? 'Попросите клиента назвать или показать код получения.'
-            : 'Клиент заберёт заказ сам. Курьер для этого заказа не нужен.';
+            ? context.tr(
+                'Попросите клиента назвать или показать код получения.',
+                'Клиенттен алу кодын айтуын немесе көрсетуін сұраңыз.',
+              )
+            : context.tr(
+                'Клиент заберёт заказ сам. Курьер для этого заказа не нужен.',
+                'Клиент тапсырысты өзі алып кетеді. Бұл тапсырысқа курьер қажет емес.',
+              );
 
     return _SectionCard(
       child: Column(
@@ -693,11 +734,9 @@ class _PickupIssueCard extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: onIssuePressed,
                 icon: const Icon(Icons.password),
-                label: const Text(
-                  'Выдать заказ',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                  ),
+                label: Text(
+                  context.tr('Выдать заказ', 'Тапсырысты беру'),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF489F2A),
@@ -716,20 +755,18 @@ class _PickupIssueCard extends StatelessWidget {
 }
 
 class _FulfillmentBadge extends StatelessWidget {
-  const _FulfillmentBadge({
-    required this.isPickup,
-  });
-
+  const _FulfillmentBadge({required this.isPickup});
   final bool isPickup;
 
   @override
   Widget build(BuildContext context) {
-    final label = isPickup ? 'Самовывоз' : 'Доставка';
+    final label = isPickup
+        ? context.tr('Самовывоз', 'Өзі алып кету')
+        : context.tr('Доставка', 'Жеткізу');
     final icon = isPickup ? Icons.storefront : Icons.delivery_dining;
-
     final color = isPickup
-        ? const Color(0xFFB0BEC5) // серый для самовывоза
-        : const Color(0xFF66D7FF); // синий для доставки
+        ? const Color(0xFFB0BEC5)
+        : const Color(0xFF66D7FF);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -758,10 +795,7 @@ class _FulfillmentBadge extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.child,
-  });
-
+  const _SectionCard({required this.child});
   final Widget child;
 
   @override
@@ -780,7 +814,6 @@ class _SectionCard extends StatelessWidget {
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.title);
-
   final String title;
 
   @override
@@ -797,16 +830,12 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _OrderItemTile extends StatelessWidget {
-  const _OrderItemTile({
-    required this.item,
-  });
-
+  const _OrderItemTile({required this.item});
   final RestaurantOrderDetailsItem item;
 
   @override
   Widget build(BuildContext context) {
     final total = item.price * item.quantity;
-
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -831,10 +860,7 @@ class _OrderItemTile extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   '${item.quantity} × ${item.price} ₸',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ],
             ),
@@ -855,11 +881,7 @@ class _OrderItemTile extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    required this.value,
-  });
-
+  const _InfoRow({required this.label, required this.value});
   final String label;
   final String value;
 
@@ -871,7 +893,7 @@ class _InfoRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 110,
+            width: 118,
             child: Text(
               label,
               style: const TextStyle(
@@ -898,11 +920,7 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _DetailsErrorState extends StatelessWidget {
-  const _DetailsErrorState({
-    required this.message,
-    required this.onRetry,
-  });
-
+  const _DetailsErrorState({required this.message, required this.onRetry});
   final String message;
   final VoidCallback onRetry;
 
@@ -923,10 +941,7 @@ class _DetailsErrorState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -935,7 +950,7 @@ class _DetailsErrorState extends StatelessWidget {
                 backgroundColor: const Color(0xFF489F2A),
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Повторить'),
+              child: Text(context.tr('Повторить', 'Қайталау')),
             ),
           ],
         ),
@@ -958,11 +973,11 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final meta = _OrderStatusMeta.fromStatus(
+      context,
       status,
       isPickup: isPickup,
       isIssuedPickup: isIssuedPickup,
     );
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -1005,88 +1020,99 @@ class _OrderStatusMeta {
   final Color borderColor;
 
   static _OrderStatusMeta fromStatus(
+    BuildContext context,
     String status, {
     required bool isPickup,
     required bool isIssuedPickup,
   }) {
-    final normalizedStatus = status.trim().toUpperCase();
-
     if (isPickup && isIssuedPickup) {
-      return const _OrderStatusMeta(
-        label: 'Выдан',
+      return _OrderStatusMeta(
+        label: context.tr('Выдан', 'Берілді'),
         icon: Icons.verified,
-        textColor: Color(0xFF7CFF9E),
-        backgroundColor: Color(0x1A7CFF9E),
-        borderColor: Color(0x337CFF9E),
+        textColor: const Color(0xFF7CFF9E),
+        backgroundColor: const Color(0x1A7CFF9E),
+        borderColor: const Color(0x337CFF9E),
       );
     }
 
-    switch (normalizedStatus) {
+    switch (status.trim().toUpperCase()) {
       case 'CREATED':
-        return const _OrderStatusMeta(
-          label: 'Новый',
+        return _OrderStatusMeta(
+          label: context.tr('Новый', 'Жаңа'),
           icon: Icons.fiber_new,
-          textColor: Color(0xFF66D7FF),
-          backgroundColor: Color(0x1A66D7FF),
-          borderColor: Color(0x3366D7FF),
+          textColor: const Color(0xFF66D7FF),
+          backgroundColor: const Color(0x1A66D7FF),
+          borderColor: const Color(0x3366D7FF),
         );
       case 'ACCEPTED':
-        return const _OrderStatusMeta(
-          label: 'Принят',
+        return _OrderStatusMeta(
+          label: context.tr('Принят', 'Қабылданды'),
           icon: Icons.check_circle_outline,
-          textColor: Color(0xFF00E676),
-          backgroundColor: Color(0x1A00E676),
-          borderColor: Color(0x3300E676),
+          textColor: const Color(0xFF00E676),
+          backgroundColor: const Color(0x1A00E676),
+          borderColor: const Color(0x3300E676),
         );
       case 'COOKING':
-        return const _OrderStatusMeta(
-          label: 'Готовится',
+        return _OrderStatusMeta(
+          label: context.tr('Готовится', 'Дайындалуда'),
           icon: Icons.local_fire_department_outlined,
-          textColor: Color(0xFFFFC857),
-          backgroundColor: Color(0x1AFFC857),
-          borderColor: Color(0x33FFC857),
+          textColor: const Color(0xFFFFC857),
+          backgroundColor: const Color(0x1AFFC857),
+          borderColor: const Color(0x33FFC857),
         );
       case 'READY':
         return _OrderStatusMeta(
-          label: isPickup ? 'Готов к выдаче' : 'Готов',
+          label: isPickup
+              ? context.tr('Готов к выдаче', 'Беруге дайын')
+              : context.tr('Готов', 'Дайын'),
           icon: Icons.done_all,
           textColor: const Color(0xFFB46CFF),
           backgroundColor: const Color(0x1AB46CFF),
           borderColor: const Color(0x33B46CFF),
         );
       case 'ON_THE_WAY':
-        return const _OrderStatusMeta(
-          label: 'В пути',
+        return _OrderStatusMeta(
+          label: context.tr('В пути', 'Жолда'),
           icon: Icons.delivery_dining,
-          textColor: Color(0xFFFF9E57),
-          backgroundColor: Color(0x1AFF9E57),
-          borderColor: Color(0x33FF9E57),
+          textColor: const Color(0xFFFF9E57),
+          backgroundColor: const Color(0x1AFF9E57),
+          borderColor: const Color(0x33FF9E57),
         );
       case 'DELIVERED':
         return _OrderStatusMeta(
-          label: isPickup ? 'Выдан' : 'Доставлен',
+          label: isPickup
+              ? context.tr('Выдан', 'Берілді')
+              : context.tr('Доставлен', 'Жеткізілді'),
           icon: Icons.verified,
           textColor: const Color(0xFF7CFF9E),
           backgroundColor: const Color(0x1A7CFF9E),
           borderColor: const Color(0x337CFF9E),
         );
-      case 'CANCELED':
-        return const _OrderStatusMeta(
-          label: 'Отменён',
+      case 'REJECTED':
+        return _OrderStatusMeta(
+          label: context.tr('Отклонён', 'Қабылданбады'),
           icon: Icons.cancel_outlined,
-          textColor: Color(0xFFFF7C7C),
-          backgroundColor: Color(0x1AFF7C7C),
-          borderColor: Color(0x33FF7C7C),
+          textColor: const Color(0xFFFF7C7C),
+          backgroundColor: const Color(0x1AFF7C7C),
+          borderColor: const Color(0x33FF7C7C),
+        );
+      case 'CANCELED':
+      case 'CANCELLED':
+        return _OrderStatusMeta(
+          label: context.tr('Отменён', 'Бас тартылды'),
+          icon: Icons.cancel_outlined,
+          textColor: const Color(0xFFFF7C7C),
+          backgroundColor: const Color(0x1AFF7C7C),
+          borderColor: const Color(0x33FF7C7C),
         );
       default:
-        return const _OrderStatusMeta(
-          label: 'Неизвестно',
+        return _OrderStatusMeta(
+          label: context.tr('Неизвестно', 'Белгісіз'),
           icon: Icons.help_outline,
-          textColor: Color(0xFFB0BEC5),
-          backgroundColor: Color(0x1AB0BEC5),
-          borderColor: Color(0x33B0BEC5),
+          textColor: const Color(0xFFB0BEC5),
+          backgroundColor: const Color(0x1AB0BEC5),
+          borderColor: const Color(0x33B0BEC5),
         );
     }
   }
 }
-
