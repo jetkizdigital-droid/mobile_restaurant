@@ -54,6 +54,35 @@ if 'android:scaleX="0.80"' not in launcher_foreground or 'android:scaleY="0.80"'
 if '#FFFFFFFF' not in launcher_foreground.upper():
     raise SystemExit('Restaurant launcher foreground must contain the white JETKIZ mark')
 
+wordmark = (root / 'assets/branding/jetkiz_wordmark.png').read_bytes()
+if not wordmark.startswith(b'\x89PNG\r\n\x1a\n') or b'IEND' not in wordmark[-32:]:
+    raise SystemExit('JETKIZ wordmark PNG is invalid or truncated')
+
+splash_logo = root / 'android/app/src/main/res/drawable/splash_logo.xml'
+if not splash_logo.exists():
+    raise SystemExit('Dedicated splash vector is missing')
+splash_text = splash_logo.read_text(encoding='utf-8')
+if 'android:scaleX="1.00"' not in splash_text or 'android:scaleY="1.00"' not in splash_text:
+    raise SystemExit('Splash logo must use full optical scale')
+
+launch_background = (
+    root / 'android/app/src/main/res/drawable/launch_background.xml'
+).read_text(encoding='utf-8')
+if '@drawable/splash_logo' not in launch_background:
+    raise SystemExit('Launch background must use dedicated splash logo')
+
+launch_background_v21 = (
+    root / 'android/app/src/main/res/drawable-v21/launch_background.xml'
+).read_text(encoding='utf-8')
+if '@drawable/splash_logo' not in launch_background_v21:
+    raise SystemExit('Android 5+ launch background must use dedicated splash logo')
+
+styles_v31 = (
+    root / 'android/app/src/main/res/values-v31/styles.xml'
+).read_text(encoding='utf-8')
+if '@drawable/splash_logo' not in styles_v31:
+    raise SystemExit('Android 12+ splash must use dedicated splash logo')
+
 for relative in (
     'android/app/src/main/res/mipmap-anydpi/ic_launcher.xml',
     'android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml',
@@ -99,6 +128,10 @@ if "'appVersion': '1.0.0'" in push:
     raise SystemExit('Push appVersion must not be hardcoded')
 if 'NotificationVisibility.public' in push:
     raise SystemExit('Restaurant notification lock-screen visibility must not be public')
+if '_newOrderRepeatPause' in push or 'for (var repeat' in push:
+    raise SystemExit('Restaurant new-order notifications must not repeat as duplicate cards')
+if 'if (message.notification != null) return;' not in push:
+    raise SystemExit('Background FCM notification must not be duplicated locally')
 
 cms = (root / 'lib/features/cms/data/restaurant_app_cms_api.dart').read_text(encoding='utf-8')
 if "'appVersion': '1.0.0'" in cms or 'appVersion=1.0.0' in cms:
