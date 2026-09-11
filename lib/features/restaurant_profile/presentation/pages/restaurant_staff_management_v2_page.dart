@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:jetkiz_restaurant/core/input/kazakhstan_phone_input.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/features/restaurant_profile/data/restaurant_staff_api.dart';
 
@@ -462,12 +463,7 @@ class _StaffFormState extends State<_StaffForm> {
     super.dispose();
   }
 
-  String _normalizePhone(String value) {
-    var digits = value.replaceAll(RegExp(r'\D'), '');
-    if (digits.startsWith('8')) digits = '7${digits.substring(1)}';
-    if (!digits.startsWith('7')) digits = '7$digits';
-    return '+$digits';
-  }
+  String _normalizePhone(String value) => normalizeKazakhstanPhone(value);
 
   void _submit() {
     final first = _first.text.trim();
@@ -511,7 +507,12 @@ class _StaffFormState extends State<_StaffForm> {
                       fontWeight: FontWeight.w900)),
               const SizedBox(height: 16),
               if (!_editing) ...[
-                _field(_phone, _t('Телефон', 'Телефон'), TextInputType.phone),
+                _field(
+                  _phone,
+                  _t('Телефон', 'Телефон'),
+                  TextInputType.phone,
+                  isPhone: true,
+                ),
                 const SizedBox(height: 10),
               ],
               _field(_first, _t('Имя', 'Аты'), TextInputType.name),
@@ -575,14 +576,29 @@ class _StaffFormState extends State<_StaffForm> {
         ),
       );
 
-  Widget _field(TextEditingController controller, String label, TextInputType type) =>
+  Widget _field(
+    TextEditingController controller,
+    String label,
+    TextInputType type, {
+    bool isPhone = false,
+  }) =>
       TextField(
         controller: controller,
         keyboardType: type,
+        inputFormatters: isPhone
+            ? const <TextInputFormatter>[KazakhstanPhoneInputFormatter()]
+            : null,
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: const TextStyle(color: Color(0xFF95A0B3)),
+          prefixText: isPhone ? '+7 ' : null,
+          prefixStyle: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+          hintText: isPhone ? '777 000 00 00' : null,
+          hintStyle: const TextStyle(color: Color(0xFF667085)),
           filled: true,
           fillColor: const Color(0xFF0B1220),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),

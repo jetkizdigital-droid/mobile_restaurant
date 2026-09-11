@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_sync_bus.dart';
@@ -49,6 +50,26 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     _OrderFilterItem(code: 'REJECTED', label: 'Отклонены'),
     _OrderFilterItem(code: 'CANCELED', label: 'Отменены'),
   ];
+
+  String _t(String ru, String kk) => context.tr(ru, kk);
+
+  String _safeError(Object error, String fallbackRu, String fallbackKk) {
+    final raw = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty ||
+        raw.length > 220 ||
+        lower.contains('dioexception') ||
+        lower.contains('socketexception') ||
+        lower.contains('exception') ||
+        lower.contains('backend') ||
+        lower.contains('endpoint') ||
+        lower.contains('status code') ||
+        lower.contains('http 4') ||
+        lower.contains('http 5')) {
+      return _t(fallbackRu, fallbackKk);
+    }
+    return raw;
+  }
 
   @override
   void initState() {

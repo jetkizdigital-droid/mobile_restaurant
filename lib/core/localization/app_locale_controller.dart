@@ -44,11 +44,10 @@ class AppLocaleController extends ChangeNotifier {
 }
 
 extension JetkizLocalization on BuildContext {
-  // Read the single app-level controller directly instead of calling
-  // Localizations.localeOf(this). This keeps tr()/isKazakh safe in async
-  // callbacks started from initState while the MaterialApp still rebuilds from
-  // the same controller when the user changes language.
-  bool get isKazakh => AppLocaleController.instance.isKazakh;
+  // The app overrides Localizations below the stable Navigator. Depending on
+  // that scope rebuilds visible screens when RU/ҚАЗ changes without replacing
+  // the Navigator or active routes.
+  bool get isKazakh => Localizations.localeOf(this).languageCode == 'kk';
 
   String tr(String ru, String kk) => isKazakh ? kk : ru;
 }

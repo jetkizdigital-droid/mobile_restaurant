@@ -221,16 +221,32 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     return result;
   }
 
-  Future<void> _switchStaffBranch(_StaffBranch branch) async {
-    if (_selectedRestaurantId == branch.id) return;
+  Future<void> _switchBranch(String restaurantId) async {
+    final nextId = restaurantId.trim();
+    if (nextId.isEmpty || _selectedRestaurantId == nextId) return;
+
+    final previousId = _selectedRestaurantId;
     try {
-      await ApiClient.instance.setSelectedRestaurantId(branch.id);
+      await ApiClient.instance.setSelectedRestaurantId(nextId);
       if (!mounted) return;
-      setState(() => _selectedRestaurantId = branch.id);
+
+      // Clear branch-owned runtime data immediately so no status, totals, menu
+      // or orders from the previous branch can remain visible during reload.
+      setState(() {
+        _selectedRestaurantId = nextId;
+        _profile = null;
+        _cms = null;
+        _updating = false;
+      });
+
       await _loadRestaurant();
       _refreshOrders();
     } catch (_) {
+      if (previousId != null && previousId.isNotEmpty) {
+        await ApiClient.instance.setSelectedRestaurantId(previousId);
+      }
       if (mounted) {
+        setState(() => _selectedRestaurantId = previousId);
         _message(_t(
           'Не удалось сменить филиал. Попробуйте ещё раз.',
           'Филиалды ауыстыру мүмкін болмады. Қайта көріңіз.',
@@ -238,6 +254,9 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       }
     }
   }
+
+  Future<void> _switchStaffBranch(_StaffBranch branch) =>
+      _switchBranch(branch.id);
 
   Future<void> _showStaffBranchSelector() async {
     if (_branches.length <= 1) return;
@@ -313,7 +332,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   Future<void> _setAcceptingOrders(bool value) async {
     if (_updating || !_isManager) return;
     final cms = _cms;
-    if (cms == null || !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
+    if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
       _message(cms?.featureReason(
             'ACCEPT_ORDERS_ENABLED',
             kazakh: context.isKazakh,
@@ -418,25 +437,37 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   }
 
   Widget _buildPage() {
+    final branchKey = (_selectedRestaurantId ?? 'unselected').trim();
+
     if (!_visibleTabs.contains(_currentTab)) {
-      return const orders_page.RestaurantOrdersPage(hideBottomBar: true);
+      return orders_page.RestaurantOrdersPage(
+        key: ValueKey('orders_$branchKey'),
+        hideBottomBar: true,
+      );
     }
     switch (_currentTab) {
       case RestaurantBottomBarTab.orders:
-        return const orders_page.RestaurantOrdersPage(hideBottomBar: true);
+        return orders_page.RestaurantOrdersPage(
+          key: ValueKey('orders_$branchKey'),
+          hideBottomBar: true,
+        );
       case RestaurantBottomBarTab.menu:
-        return const RestaurantMenuPage();
+        return RestaurantMenuPage(key: ValueKey('menu_$branchKey'));
       case RestaurantBottomBarTab.profile:
-        return RestaurantProfileAccessPage(isOwner: _isOwner);
+        return RestaurantProfileAccessPage(
+          key: ValueKey('profile_$branchKey'),
+          isOwner: _isOwner,
+          onBranchChanged: _switchBranch,
+        );
       case RestaurantBottomBarTab.finance:
         if (_cms?.featureEnabled('FINANCE_VIEW_ENABLED') == false) {
           return _Unavailable(
             title: _t('Финансы временно недоступны', 'Қаржы уақытша қолжетімсіз'),
           );
         }
-        return const RestaurantFinancePage();
+        return RestaurantFinancePage(key: ValueKey('finance_$branchKey'));
       case RestaurantBottomBarTab.support:
-        return const RestaurantSupportPage();
+        return RestaurantSupportPage(key: ValueKey('support_$branchKey'));
     }
   }
 
@@ -471,7 +502,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
                       'Уақытша шектеулер болуы мүмкін',
                     ),
               ),
-            if (_isStaff) _buildStaffBar(),
+            if (!_isManager) _buildStaffBar(),
             if (_profile != null && _isManager)
               RestaurantOperationalBanner(
                 profile: _profile!,

@@ -36,7 +36,10 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   }
 
   void _loadOrder() {
-    setState(() => _orderFuture = _getOrderDetails());
+    final future = _getOrderDetails();
+    setState(() {
+      _orderFuture = future;
+    });
   }
 
   Future<void> _refresh() async {
