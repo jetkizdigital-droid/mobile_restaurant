@@ -24,7 +24,7 @@ val hasReleaseSigningConfig = listOf(
 ).all { key -> keystoreProperties.getProperty(key)?.isNotBlank() == true }
 
 android {
-    namespace = "com.example.jetkiz_restaurant"
+    namespace = "kz.jetkiz.restaurant"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -39,7 +39,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.jetkiz_restaurant"
+        applicationId = "kz.jetkiz.restaurant"
         minSdk = flutter.minSdkVersion
         targetSdk = 36
         versionCode = flutter.versionCode
