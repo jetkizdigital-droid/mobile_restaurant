@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jetkiz_restaurant/core/widgets/jetkiz_wordmark.dart';
 import 'package:intl/intl.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 
@@ -640,15 +641,7 @@ class _FinanceHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
-                'jetkiz',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
+              const JetkizWordmark(height: 16),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
