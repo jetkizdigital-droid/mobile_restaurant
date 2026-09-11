@@ -76,12 +76,12 @@ for relative in (
 push_entry_path = root / 'lib/core/push/restaurant_push_notification_service.dart'
 push_entry = push_entry_path.read_text(encoding='utf-8')
 push = push_entry
-export_match = re.search(r"export\\s+['\"]([^'\"]+)['\"]", push_entry)
+export_match = re.search(r"export\s+['\"]([^'\"]+)['\"]", push_entry)
 if export_match:
     exported_path = push_entry_path.parent / export_match.group(1)
     if not exported_path.exists():
         raise SystemExit(f'Push implementation export is missing: {exported_path}')
-    push += '\\n' + exported_path.read_text(encoding='utf-8')
+    push += '\n' + exported_path.read_text(encoding='utf-8')
 
 for required in (
     "'app': 'restaurant'",
