@@ -3,6 +3,7 @@ import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
 import 'package:jetkiz_restaurant/core/navigation/app_page_route.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 import 'package:jetkiz_restaurant/features/navigation/presentation/pages/restaurant_shell_page.dart';
+import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_sms_page.dart';
 
 class RestaurantStaffPasswordPage extends StatefulWidget {
   const RestaurantStaffPasswordPage({
@@ -143,6 +144,46 @@ class _RestaurantStaffPasswordPageState
           error,
           'Не удалось войти. Проверьте телефон и пароль.',
           'Кіру мүмкін болмады. Телефон мен құпиясөзді тексеріңіз.',
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loginBySms() async {
+    final phone = _phoneController.text.trim();
+    if (!_validPhone(phone)) {
+      _showError(
+        _t(
+          'Введите корректный номер телефона.',
+          'Телефон нөмірін дұрыс енгізіңіз.',
+        ),
+      );
+      return;
+    }
+    if (_loading) return;
+
+    setState(() => _loading = true);
+    try {
+      final normalizedPhone = _normalizePhone(phone);
+      await _auth.requestCode(phone: normalizedPhone);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        AppPageRoute<void>(
+          page: RestaurantSmsPage(
+            phone: normalizedPhone,
+            isNewUser: false,
+            languageCode: AppLocaleController.instance.languageCode,
+          ),
+        ),
+      );
+    } catch (error) {
+      _showError(
+        _friendlyError(
+          error,
+          'Не удалось отправить код. Попробуйте позже.',
+          'Кодты жіберу мүмкін болмады. Кейінірек қайталап көріңіз.',
         ),
       );
     } finally {
@@ -298,6 +339,20 @@ class _RestaurantStaffPasswordPageState
         _submitButton(
           label: _loading ? _t('Вход...', 'Кіру...') : _t('Войти', 'Кіру'),
           onPressed: _loading ? null : _login,
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: TextButton.icon(
+            onPressed: _loading ? null : _loginBySms,
+            icon: const Icon(Icons.sms_outlined),
+            label: Text(
+              _t(
+                'Забыли пароль? Войти по SMS',
+                'Құпиясөзді ұмыттыңыз ба? SMS арқылы кіру',
+              ),
+            ),
+          ),
         ),
       ],
     );
