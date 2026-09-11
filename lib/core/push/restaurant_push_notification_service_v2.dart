@@ -34,7 +34,6 @@ const String _androidNewOrderChannelDescription =
     'Громкие уведомления для новых заказов ресторана';
 const String _restaurantOrderSoundName = 'restaurant_order';
 const String _lastAppOpenedAtKey = 'restaurant_last_app_opened_at_ms';
-const Duration _newOrderRepeatPause = Duration(seconds: 10);
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -48,7 +47,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final orderId = _readPushString(message.data['orderId']);
   if (orderId == null) return;
 
-  final sequenceStartedAt = DateTime.now().millisecondsSinceEpoch;
   final plugin = FlutterLocalNotificationsPlugin();
   try {
     const initializationSettings = InitializationSettings(
@@ -89,43 +87,35 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     if (notificationId != null) 'notificationId': notificationId,
   });
 
-  for (var repeat = 1; repeat <= 2; repeat++) {
-    await Future<void>.delayed(_newOrderRepeatPause);
-    if (await _appWasOpenedAfter(sequenceStartedAt)) return;
-    try {
-      await plugin.show(
-        id: _stablePushNotificationId(orderId),
-        title: title,
-        body: body,
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _androidNewOrderChannelId,
-            _androidNewOrderChannelName,
-            channelDescription: _androidNewOrderChannelDescription,
-            importance: Importance.max,
-            priority: Priority.max,
-            playSound: true,
-            sound: RawResourceAndroidNotificationSound(_restaurantOrderSoundName),
-            enableVibration: true,
-            category: AndroidNotificationCategory.message,
-            visibility: NotificationVisibility.private,
-            ticker: 'Новый заказ',
-          ),
-        ),
-        payload: payload,
-      );
-    } catch (_) {}
-  }
-}
+  // Firebase/Android already renders messages that contain a notification
+  // payload while the app is backgrounded. Showing another local notification
+  // here would duplicate the same order. Keep a single local fallback only for
+  // data-only messages.
+  if (message.notification != null) return;
 
-Future<bool> _appWasOpenedAfter(int sequenceStartedAt) async {
   try {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
-    return (prefs.getInt(_lastAppOpenedAtKey) ?? 0) >= sequenceStartedAt;
-  } catch (_) {
-    return false;
-  }
+    await plugin.show(
+      id: _stablePushNotificationId(orderId),
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _androidNewOrderChannelId,
+          _androidNewOrderChannelName,
+          channelDescription: _androidNewOrderChannelDescription,
+          importance: Importance.max,
+          priority: Priority.max,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound(_restaurantOrderSoundName),
+          enableVibration: true,
+          category: AndroidNotificationCategory.message,
+          visibility: NotificationVisibility.private,
+          ticker: 'Новый заказ',
+        ),
+      ),
+      payload: payload,
+    );
+  } catch (_) {}
 }
 
 bool _isRestaurantOrderData(Map<String, dynamic> data) =>
