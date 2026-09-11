@@ -313,7 +313,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   Future<void> _setAcceptingOrders(bool value) async {
     if (_updating || !_isManager) return;
     final cms = _cms;
-    if (cms == null || !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
+    if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
       _message(cms?.featureReason(
             'ACCEPT_ORDERS_ENABLED',
             kazakh: context.isKazakh,
@@ -427,7 +427,11 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       case RestaurantBottomBarTab.menu:
         return const RestaurantMenuPage();
       case RestaurantBottomBarTab.profile:
-        return RestaurantProfileAccessPage(isOwner: _isOwner);
+        return RestaurantProfileAccessPage(
+          isOwner: _isOwner,
+          loggingOut: _loggingOut,
+          onLogout: _logout,
+        );
       case RestaurantBottomBarTab.finance:
         if (_cms?.featureEnabled('FINANCE_VIEW_ENABLED') == false) {
           return _Unavailable(
@@ -471,7 +475,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
                       'Уақытша шектеулер болуы мүмкін',
                     ),
               ),
-            if (_isStaff) _buildStaffBar(),
+            if (!_isManager) _buildStaffBar(),
             if (_profile != null && _isManager)
               RestaurantOperationalBanner(
                 profile: _profile!,
