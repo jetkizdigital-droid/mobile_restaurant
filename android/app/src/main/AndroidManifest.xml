@@ -20,7 +20,7 @@
             android:value="restaurant_new_orders_v2" />
 
         <activity
-            android:name="com.example.jetkiz_restaurant.MainActivity"
+            android:name="kz.jetkiz.restaurant.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
