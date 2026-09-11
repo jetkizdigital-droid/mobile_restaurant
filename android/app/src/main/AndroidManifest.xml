@@ -10,6 +10,7 @@
         android:name="${applicationName}"
         android:label="JETKIZ Restaurant"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:usesCleartextTraffic="false"
