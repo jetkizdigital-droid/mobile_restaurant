@@ -39,19 +39,66 @@ if 'android.permission.POST_NOTIFICATIONS' not in manifest:
     raise SystemExit('POST_NOTIFICATIONS permission is required')
 if 'restaurant_new_orders_v2' not in manifest:
     raise SystemExit('Restaurant new-order default channel is missing')
+if 'android:roundIcon="@mipmap/ic_launcher_round"' not in manifest:
+    raise SystemExit('Restaurant round launcher icon is missing from AndroidManifest.xml')
 
-push = (root / 'lib/core/push/restaurant_push_notification_service.dart').read_text(encoding='utf-8')
+launcher_colors = (root / 'android/app/src/main/res/values/colors.xml').read_text(encoding='utf-8')
+if 'launcher_icon_background' not in launcher_colors or '#1A1F35' not in launcher_colors.upper():
+    raise SystemExit('Restaurant launcher background must be #1A1F35')
+
+launcher_foreground = (
+    root / 'android/app/src/main/res/drawable/ic_launcher_foreground.xml'
+).read_text(encoding='utf-8')
+if 'android:scaleX="0.80"' not in launcher_foreground or 'android:scaleY="0.80"' not in launcher_foreground:
+    raise SystemExit('Restaurant launcher foreground must use 0.80 optical scale')
+if '#FFFFFFFF' not in launcher_foreground.upper():
+    raise SystemExit('Restaurant launcher foreground must contain the white JETKIZ mark')
+
+for relative in (
+    'android/app/src/main/res/mipmap-anydpi/ic_launcher.xml',
+    'android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml',
+):
+    if not (root / relative).exists():
+        raise SystemExit(f'Legacy launcher resource is missing: {relative}')
+
+for relative in (
+    'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
+    'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
+):
+    adaptive = (root / relative).read_text(encoding='utf-8')
+    if '<adaptive-icon' not in adaptive:
+        raise SystemExit(f'Adaptive launcher resource is invalid: {relative}')
+    if '@color/launcher_icon_background' not in adaptive:
+        raise SystemExit(f'Adaptive launcher background is missing: {relative}')
+    if '@drawable/ic_launcher_foreground' not in adaptive:
+        raise SystemExit(f'Adaptive launcher foreground is missing: {relative}')
+
+push_entry_path = root / 'lib/core/push/restaurant_push_notification_service.dart'
+push_entry = push_entry_path.read_text(encoding='utf-8')
+push = push_entry
+export_match = re.search(r"export\\s+['\"]([^'\"]+)['\"]", push_entry)
+if export_match:
+    exported_path = push_entry_path.parent / export_match.group(1)
+    if not exported_path.exists():
+        raise SystemExit(f'Push implementation export is missing: {exported_path}')
+    push += '\\n' + exported_path.read_text(encoding='utf-8')
+
 for required in (
     "'app': 'restaurant'",
     'jetkiz_default_channel',
     'restaurant_new_orders_v2',
     'ADMIN_CAMPAIGN',
     'AppBuildInfo.fullVersion',
+    'ensureOrderNotificationsReady',
+    'getNotificationChannels',
+    'NotificationVisibility.private',
 ):
     if required not in push:
         raise SystemExit(f'Push release contract missing: {required}')
 if "'appVersion': '1.0.0'" in push:
     raise SystemExit('Push appVersion must not be hardcoded')
+if 'NotificationVisibility.public' in push:
+    raise SystemExit('Restaurant notification lock-screen visibility must not be public')
 
 cms = (root / 'lib/features/cms/data/restaurant_app_cms_api.dart').read_text(encoding='utf-8')
 if "'appVersion': '1.0.0'" in cms or 'appVersion=1.0.0' in cms:
