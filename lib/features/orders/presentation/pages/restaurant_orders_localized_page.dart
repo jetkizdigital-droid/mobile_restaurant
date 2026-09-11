@@ -26,6 +26,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
 
   bool _isLoading = true;
   bool _silentRefreshInFlight = false;
+  int _foregroundLoadsInFlight = 0;
   int _loadGeneration = 0;
   String? _error;
 
@@ -82,18 +83,27 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   }
 
   Future<void> _loadOrders({bool silent = false}) async {
-    if (silent && _silentRefreshInFlight) return;
+    // Background refreshes must never supersede an explicit filter/retry load.
+    // Otherwise the foreground response can be discarded by generation checks,
+    // and a failed silent request can leave the full-screen loader stuck.
+    if (silent &&
+        (_silentRefreshInFlight || _foregroundLoadsInFlight > 0)) {
+      return;
+    }
 
     final generation = ++_loadGeneration;
     final requestedStatus = _selectedStatus;
 
     if (silent) {
       _silentRefreshInFlight = true;
-    } else if (mounted) {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
+    } else {
+      _foregroundLoadsInFlight += 1;
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _error = null;
+        });
+      }
     }
 
     try {
@@ -123,7 +133,12 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
         _isLoading = false;
       });
     } finally {
-      if (silent) _silentRefreshInFlight = false;
+      if (silent) {
+        _silentRefreshInFlight = false;
+      } else {
+        _foregroundLoadsInFlight =
+            (_foregroundLoadsInFlight - 1).clamp(0, 1 << 30).toInt();
+      }
     }
   }
 
