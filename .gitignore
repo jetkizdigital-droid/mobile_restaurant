@@ -18,3 +18,6 @@ android/app/*.jks
 android/app/*.keystore
 *.jks
 *.keystore
+*.p8
+*.p12
+*.mobileprovision
