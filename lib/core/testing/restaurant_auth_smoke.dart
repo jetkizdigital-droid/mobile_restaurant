@@ -2,10 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:jetkiz_restaurant/features/auth/data/auth_api.dart';
 
 class RestaurantAuthSmokeResult {
-  const RestaurantAuthSmokeResult({
-    required this.success,
-    required this.message,
-  });
+  const RestaurantAuthSmokeResult({required this.success, required this.message});
 
   final bool success;
   final String message;
