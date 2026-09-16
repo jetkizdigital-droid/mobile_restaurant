@@ -10,11 +10,18 @@ import 'package:flutter/material.dart';
 import 'app/app.dart';
 import 'core/localization/app_locale_controller.dart';
 import 'core/push/restaurant_push_notification_service.dart';
+import 'core/testing/restaurant_auth_smoke.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await AppLocaleController.instance.load();
+
+  final authSmoke = await runRestaurantAuthSmokeIfRequested();
+  if (authSmoke != null) {
+    runApp(_RestaurantAuthSmokeApp(result: authSmoke));
+    return;
+  }
 
   final firebaseReady = await _initializeFirebaseSafely();
   if (firebaseReady) {
@@ -25,6 +32,30 @@ Future<void> main() async {
 
   if (firebaseReady) {
     unawaited(_initializeFirebaseServicesSafely());
+  }
+}
+
+
+class _RestaurantAuthSmokeApp extends StatelessWidget {
+  const _RestaurantAuthSmokeApp({required this.result});
+
+  final RestaurantAuthSmokeResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Text(
+            result.success
+                ? 'JETKIZ_RESTAURANT_E2E_AUTH_OK'
+                : 'JETKIZ_RESTAURANT_E2E_AUTH_FAILED',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ),
+    );
   }
 }
 
