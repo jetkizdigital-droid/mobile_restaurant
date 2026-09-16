@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import json
+import plistlib
 import re
 from pathlib import Path
 
 EXPECTED_ANDROID_PACKAGE = 'kz.jetkiz.restaurant'
 EXPECTED_IOS_BUNDLE_ID = 'asia.jetkiz.restaurant'
+EXPECTED_FIREBASE_IOS_APP_ID = '1:97147344656:ios:0719e155ebe825205f7795'
 
 root = Path(__file__).resolve().parents[1]
 pubspec = (root / 'pubspec.yaml').read_text(encoding='utf-8')
@@ -113,6 +115,20 @@ podfile = (root / 'ios/Podfile').read_text(encoding='utf-8')
 if "platform :ios, '15.0'" not in podfile:
     raise SystemExit('Restaurant iOS deployment target must be 15.0')
 
+firebase_ios_path = root / 'ios/Runner/GoogleService-Info.plist'
+if not firebase_ios_path.exists():
+    raise SystemExit('Restaurant iOS Firebase plist is missing')
+with firebase_ios_path.open('rb') as handle:
+    firebase_ios = plistlib.load(handle)
+if firebase_ios.get('BUNDLE_ID') != EXPECTED_IOS_BUNDLE_ID:
+    raise SystemExit('Restaurant Firebase iOS bundle identifier mismatch')
+if firebase_ios.get('PROJECT_ID') != 'jetkiz-mobile':
+    raise SystemExit('Restaurant Firebase iOS project must be jetkiz-mobile')
+if firebase_ios.get('GOOGLE_APP_ID') != EXPECTED_FIREBASE_IOS_APP_ID:
+    raise SystemExit('Restaurant Firebase iOS app identifier mismatch')
+if 'GoogleService-Info.plist in Resources' not in ios_project:
+    raise SystemExit('Restaurant Firebase plist must be bundled in Runner resources')
+
 launcher_colors = (root / 'android/app/src/main/res/values/colors.xml').read_text(encoding='utf-8')
 if 'launcher_icon_background' not in launcher_colors or '#1A1F35' not in launcher_colors.upper():
     raise SystemExit('Restaurant launcher background must be #1A1F35')
@@ -192,6 +208,7 @@ for required in (
     'ensureOrderNotificationsReady',
     'getNotificationChannels',
     'NotificationVisibility.private',
+    'getAPNSToken',
 ):
     if required not in push:
         raise SystemExit(f'Push release contract missing: {required}')
