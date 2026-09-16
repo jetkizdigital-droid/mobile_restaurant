@@ -120,13 +120,12 @@ jobs:
           test -n "$(/usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryUsageDescription' ios/Runner/Info.plist)"
           test -n "$(/usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' ios/Runner/Info.plist)"
 
-          if [ -f ios/Runner/GoogleService-Info.plist ]; then
-            /usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' ios/Runner/GoogleService-Info.plist | grep -Fx 'asia.jetkiz.restaurant'
-            /usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' ios/Runner/GoogleService-Info.plist | grep -Fx 'jetkiz-mobile'
-            echo 'Firebase iOS configuration verified'
-          else
-            echo '::warning::Restaurant GoogleService-Info.plist is not configured yet; Firebase/APNs runtime verification remains pending'
-          fi
+          test -s ios/Runner/GoogleService-Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' ios/Runner/GoogleService-Info.plist | grep -Fx 'asia.jetkiz.restaurant'
+          /usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' ios/Runner/GoogleService-Info.plist | grep -Fx 'jetkiz-mobile'
+          /usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' ios/Runner/GoogleService-Info.plist | grep -Fx '1:97147344656:ios:0719e155ebe825205f7795'
+          grep -F 'GoogleService-Info.plist in Resources' ios/Runner.xcodeproj/project.pbxproj
+          echo 'Firebase iOS configuration verified'
 
       - name: Build iPhone Simulator
         run: flutter build ios --simulator --debug
@@ -140,9 +139,11 @@ jobs:
           test -f "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" | grep -Fx 'asia.jetkiz.restaurant'
           /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP/Info.plist" | grep -Fx 'JETKIZ Ресторан'
-          if [ -f ios/Runner/GoogleService-Info.plist ]; then
-            test -s "$APP/GoogleService-Info.plist"
-          fi
+          test -s "$APP/GoogleService-Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' "$APP/GoogleService-Info.plist" | grep -Fx 'asia.jetkiz.restaurant'
+          /usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' "$APP/GoogleService-Info.plist" | grep -Fx 'jetkiz-mobile'
+          /usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' "$APP/GoogleService-Info.plist" | grep -Fx '1:97147344656:ios:0719e155ebe825205f7795'
+          echo 'Restaurant Firebase plist is present in simulator app bundle'
           echo 'Restaurant iOS simulator bundle verified'
 
       - name: Build unsigned iPhone release
@@ -157,6 +158,9 @@ jobs:
           test -f "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" | grep -Fx 'asia.jetkiz.restaurant'
           /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP/Info.plist" | grep -Fx 'JETKIZ Ресторан'
+          test -s "$APP/GoogleService-Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' "$APP/GoogleService-Info.plist" | grep -Fx 'asia.jetkiz.restaurant'
+          /usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' "$APP/GoogleService-Info.plist" | grep -Fx 'jetkiz-mobile'
           file "$APP/Runner" | grep -E 'arm64|Mach-O'
           du -sh "$APP"
           echo 'Unsigned Restaurant release for physical iPhone verified'
@@ -184,6 +188,17 @@ jobs:
           xcrun simctl io "$UDID" screenshot build/ios-smoke/restaurant-login.png
           xcrun simctl spawn "$UDID" log show --style compact --last 2m --predicate 'process == "Runner"' > build/ios-smoke/runner.log || true
           test -s build/ios-smoke/restaurant-login.png
+          if grep -Fq 'Firebase initialization failed' build/ios-smoke/runner.log; then
+            echo 'Firebase bootstrap error detected in Restaurant simulator log' >&2
+            grep -F 'Firebase initialization failed' build/ios-smoke/runner.log >&2 || true
+            exit 1
+          fi
+          if grep -Fq '[core/not-initialized]' build/ios-smoke/runner.log; then
+            echo 'Firebase core/not-initialized error detected in Restaurant simulator log' >&2
+            grep -F '[core/not-initialized]' build/ios-smoke/runner.log >&2 || true
+            exit 1
+          fi
+          echo 'Restaurant Firebase initialized without bootstrap errors'
           echo 'JETKIZ Restaurant launched and remained alive in iPhone Simulator'
 
       - name: Upload simulator evidence
