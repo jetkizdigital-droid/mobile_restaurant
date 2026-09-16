@@ -35,7 +35,6 @@ Future<void> main() async {
   }
 }
 
-
 class _RestaurantAuthSmokeApp extends StatelessWidget {
   const _RestaurantAuthSmokeApp({required this.result});
 
