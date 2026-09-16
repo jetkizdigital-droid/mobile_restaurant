@@ -6,12 +6,12 @@ on:
       build_name:
         description: App version shown to users
         required: true
-        default: '1.0.3'
+        default: '1.0.0'
         type: string
       build_number:
         description: Unique App Store build number
         required: true
-        default: '5'
+        default: '1'
         type: string
       upload_to_testflight:
         description: Upload the signed archive to App Store Connect
