@@ -138,7 +138,9 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :aps-environment' ios/Runner/Runner.Release.entitlements | grep -Fx 'production'
           grep -F 'com.apple.Push' ios/Runner.xcodeproj/project.pbxproj
           grep -F 'com.apple.BackgroundModes' ios/Runner.xcodeproj/project.pbxproj
+          /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes' ios/Runner/Info.plist | grep -F 'remote-notification'
           test -n "$(/usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryUsageDescription' ios/Runner/Info.plist)"
+          test -n "$(/usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' ios/Runner/Info.plist)"
           echo "Production configuration verified"
 
       - name: Archive signed iPhone release
