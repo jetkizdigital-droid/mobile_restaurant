@@ -2,6 +2,24 @@ name: Restaurant iOS Auth Smoke
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/restaurant-ios-auth-smoke.yml'
+  push:
+    branches:
+      - ios/restaurant-initial-release
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/restaurant-ios-auth-smoke.yml'
 
 permissions:
   contents: read
@@ -27,8 +45,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${E2E_RESTAURANT_PHONE:-}"
-          test -n "${E2E_RESTAURANT_PASSWORD:-}"
+          if [ -z "${E2E_RESTAURANT_PHONE:-}" ]; then
+            echo "::error::Missing repository secret E2E_RESTAURANT_PHONE"
+            exit 1
+          fi
+          if [ -z "${E2E_RESTAURANT_PASSWORD:-}" ]; then
+            echo "::error::Missing repository secret E2E_RESTAURANT_PASSWORD"
+            exit 1
+          fi
           echo 'Restaurant E2E credentials are configured'
 
       - name: Setup Flutter
@@ -37,8 +61,19 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter --version
+          xcodebuild -version
+          xcrun simctl list runtimes
+
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Boot clean iPhone Simulator
         id: simulator
