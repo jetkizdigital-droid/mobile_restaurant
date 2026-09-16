@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 EXPECTED_ANDROID_PACKAGE = 'kz.jetkiz.restaurant'
+EXPECTED_IOS_BUNDLE_ID = 'asia.jetkiz.restaurant'
 
 root = Path(__file__).resolve().parents[1]
 pubspec = (root / 'pubspec.yaml').read_text(encoding='utf-8')
@@ -68,6 +69,49 @@ legacy_activity = root / 'android/app/src/main/kotlin/com/example/jetkiz_restaur
 if legacy_activity.exists():
     raise SystemExit('Legacy com.example Restaurant MainActivity must be removed')
 
+
+ios_project = (root / 'ios/Runner.xcodeproj/project.pbxproj').read_text(encoding='utf-8')
+if f'PRODUCT_BUNDLE_IDENTIFIER = {EXPECTED_IOS_BUNDLE_ID};' not in ios_project:
+    raise SystemExit(
+        f'iOS Runner bundle identifier must be {EXPECTED_IOS_BUNDLE_ID}'
+    )
+if 'com.example.jetkizRestaurant' in ios_project:
+    raise SystemExit('Legacy example iOS bundle identifier must be removed')
+if 'CODE_SIGN_ENTITLEMENTS = Runner/Runner.Debug.entitlements;' not in ios_project:
+    raise SystemExit('iOS Debug APNs entitlements are not configured')
+if ios_project.count(
+    'CODE_SIGN_ENTITLEMENTS = Runner/Runner.Release.entitlements;'
+) < 2:
+    raise SystemExit('iOS Release/Profile APNs entitlements are not configured')
+if 'com.apple.Push' not in ios_project:
+    raise SystemExit('iOS Push Notifications capability is missing')
+if 'com.apple.BackgroundModes' not in ios_project:
+    raise SystemExit('iOS Background Modes capability is missing')
+
+ios_info = (root / 'ios/Runner/Info.plist').read_text(encoding='utf-8')
+for required in (
+    '<string>JETKIZ Ресторан</string>',
+    '<key>NSPhotoLibraryUsageDescription</key>',
+    '<key>NSCameraUsageDescription</key>',
+    '<string>remote-notification</string>',
+):
+    if required not in ios_info:
+        raise SystemExit(f'iOS Info.plist release contract missing: {required}')
+
+debug_entitlements = (
+    root / 'ios/Runner/Runner.Debug.entitlements'
+).read_text(encoding='utf-8')
+release_entitlements = (
+    root / 'ios/Runner/Runner.Release.entitlements'
+).read_text(encoding='utf-8')
+if '<string>development</string>' not in debug_entitlements:
+    raise SystemExit('iOS Debug aps-environment must be development')
+if '<string>production</string>' not in release_entitlements:
+    raise SystemExit('iOS Release aps-environment must be production')
+
+podfile = (root / 'ios/Podfile').read_text(encoding='utf-8')
+if "platform :ios, '15.0'" not in podfile:
+    raise SystemExit('Restaurant iOS deployment target must be 15.0')
 
 launcher_colors = (root / 'android/app/src/main/res/values/colors.xml').read_text(encoding='utf-8')
 if 'launcher_icon_background' not in launcher_colors or '#1A1F35' not in launcher_colors.upper():
