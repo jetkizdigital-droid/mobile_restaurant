@@ -1,26 +1,13 @@
-# This file configures the analyzer, which statically analyzes Dart code to
-# check for errors, warnings, and lints.
-#
-# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
-# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
-# invoked from the command line by running `flutter analyze`.
-
-# The following line activates a set of recommended lints for Flutter apps,
-# packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
 linter:
-  # Keep the standard Flutter lint set enabled. Style/deprecation infos are
-  # reported in CI, while real analyzer errors and warnings remain fatal.
   rules:
+    # These are style-only preferences. Runtime-safety and deprecation lints
+    # stay enabled and are enforced by plain `flutter analyze` in CI.
+    file_names: false
+    unnecessary_underscores: false
+    use_null_aware_elements: false
 
 analyzer:
   exclude:
     - lib_backup_before_encoding_fix/**
-  errors:
-    # These three findings are tracked as cleanup items in the production-audit
-    # branch. They are intentionally downgraded to info so CI can execute tests
-    # and a real Android build while still failing on every other warning/error.
-    unawaited_return_in_try_block: info
-    unused_element_parameter: info
-    unused_field: info
