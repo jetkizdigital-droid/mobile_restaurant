@@ -245,6 +245,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     if (_isSaving) return;
 
     final cms = RestaurantAppCmsSession.instance;
+    final isKazakh = context.isKazakh;
     if (!cms.featureEnabled('MENU_EDIT_ENABLED')) {
       _message(
         cms.featureReason(
@@ -303,8 +304,6 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
       _isSaving = true;
       _errorText = null;
     });
-
-    final isKazakh = context.isKazakh;
 
     final data = <String, dynamic>{
       'categoryId': categoryId,
