@@ -245,11 +245,12 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     if (_isSaving) return;
 
     final cms = RestaurantAppCmsSession.instance;
+    final isKazakh = context.isKazakh;
     if (!cms.featureEnabled('MENU_EDIT_ENABLED')) {
       _message(
         cms.featureReason(
               'MENU_EDIT_ENABLED',
-              kazakh: context.isKazakh,
+              kazakh: isKazakh,
             ) ??
             _t(
               'Редактирование меню временно недоступно.',
@@ -325,7 +326,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
             throw _StopListUnavailable(
               cms.featureReason(
                 'STOP_LIST_ENABLED',
-                kazakh: context.isKazakh,
+                kazakh: isKazakh,
               ),
             );
           }
@@ -344,7 +345,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
             throw _StopListUnavailable(
               cms.featureReason(
                 'STOP_LIST_ENABLED',
-                kazakh: context.isKazakh,
+                kazakh: isKazakh,
               ),
             );
           }
@@ -565,7 +566,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<String>(
-        value: _selectedCategoryId,
+        initialValue: _selectedCategoryId,
         dropdownColor: const Color(0xFF1A2740),
         decoration: _decoration(),
         items: _categories

@@ -274,11 +274,11 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
       if (!mounted) return;
       _showSnackBar(_cleanError(e));
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _updatingOrderIds.remove(orderId);
-      });
+      if (mounted) {
+        setState(() {
+          _updatingOrderIds.remove(orderId);
+        });
+      }
     }
   }
 

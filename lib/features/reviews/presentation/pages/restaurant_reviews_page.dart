@@ -92,11 +92,12 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
       if (!mounted) return;
       setState(() => _error = _safeError(error));
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _isRefreshing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isRefreshing = false;
+        });
+      }
     }
   }
 
