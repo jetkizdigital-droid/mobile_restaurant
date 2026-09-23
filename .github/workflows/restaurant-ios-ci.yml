@@ -11,6 +11,7 @@ on:
       - 'ios/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
+      - 'assets/branding/jetkiz_app_icon.svg'
       - 'tool/prepare_ios_app_icon.swift'
       - '.github/workflows/restaurant-ios-ci.yml'
   pull_request:
@@ -22,6 +23,7 @@ on:
       - 'ios/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
+      - 'assets/branding/jetkiz_app_icon.svg'
       - 'tool/prepare_ios_app_icon.swift'
       - '.github/workflows/restaurant-ios-ci.yml'
 
@@ -69,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BRAND_SRC=assets/branding/jetkiz_wordmark.png
+          BRAND_SRC=assets/branding/jetkiz_app_icon.svg
           SRC="$RUNNER_TEMP/jetkiz-restaurant-ios-app-icon.png"
           DIR=ios/Runner/Assets.xcassets/AppIcon.appiconset
 
