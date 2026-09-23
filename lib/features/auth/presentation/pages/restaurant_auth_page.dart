@@ -649,7 +649,6 @@ class _DarkTextField extends StatelessWidget {
     required this.hintText,
     required this.prefixIcon,
     this.keyboardType,
-    this.onChanged,
     this.prefixText,
     this.inputFormatters,
   });
@@ -658,7 +657,6 @@ class _DarkTextField extends StatelessWidget {
   final String hintText;
   final IconData prefixIcon;
   final TextInputType? keyboardType;
-  final ValueChanged<String>? onChanged;
   final String? prefixText;
   final List<TextInputFormatter>? inputFormatters;
 
@@ -673,7 +671,6 @@ class _DarkTextField extends StatelessWidget {
       ),
       child: TextField(
         controller: controller,
-        onChanged: onChanged,
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,
         style: const TextStyle(color: Colors.white, fontSize: 14),
