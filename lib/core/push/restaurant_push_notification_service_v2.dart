@@ -549,6 +549,7 @@ class RestaurantPushNotificationService {
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          sound: 'restaurant_order.wav',
           interruptionLevel: InterruptionLevel.timeSensitive,
         ),
       ),
