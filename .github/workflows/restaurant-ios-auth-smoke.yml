@@ -73,7 +73,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze
 
       - name: Boot clean iPhone Simulator
         id: simulator
