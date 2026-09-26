@@ -14,6 +14,7 @@ import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_ac
 import 'package:jetkiz_restaurant/features/restaurant/data/restaurant_api.dart';
 import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_data.dart';
 import 'package:jetkiz_restaurant/features/restaurant_profile/widgets/restaurant_statistics_tab.dart';
+import 'package:jetkiz_restaurant/features/support/presentation/pages/restaurant_support_page.dart';
 
 class RestaurantProfilePage extends StatefulWidget {
   const RestaurantProfilePage({
@@ -721,6 +722,21 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
             ),
           ],
           const SizedBox(height: 20),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const RestaurantSupportPage(),
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFFF7C7C),
+              side: const BorderSide(color: Color(0xFF7A3038)),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: Text(_t('Удалить аккаунт', 'Аккаунтты жою')),
+          ),
+          const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: _logout,
             style: FilledButton.styleFrom(

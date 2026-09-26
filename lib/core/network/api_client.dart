@@ -102,7 +102,7 @@ class ApiClient {
     String fieldName = 'file',
     bool authRequired = true,
   }) async {
-    return _sendMultipart(
+    return await _sendMultipart(
       path: path,
       file: file,
       fieldName: fieldName,
@@ -162,7 +162,7 @@ class ApiClient {
         final latestAccessToken = await _storage.getAccessToken();
         if (staleTokenRetries > 0 &&
             _hasAccessTokenChanged(accessTokenUsed, latestAccessToken)) {
-          return uploadFiles(
+          return await uploadFiles(
             path,
             mainFile: mainFile,
             files: files,
@@ -178,7 +178,7 @@ class ApiClient {
       if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
         final refreshResult = await _tryRefresh();
         if (refreshResult == _RefreshResult.refreshed) {
-          return uploadFiles(
+          return await uploadFiles(
             path,
             mainFile: mainFile,
             files: files,
@@ -422,7 +422,7 @@ class ApiClient {
         final latestAccessToken = await _storage.getAccessToken();
         if (staleTokenRetries > 0 &&
             _hasAccessTokenChanged(accessTokenUsed, latestAccessToken)) {
-          return _sendMultipart(
+          return await _sendMultipart(
             path: path,
             file: file,
             fieldName: fieldName,
@@ -436,7 +436,7 @@ class ApiClient {
       if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
         final refreshResult = await _tryRefresh();
         if (refreshResult == _RefreshResult.refreshed) {
-          return _sendMultipart(
+          return await _sendMultipart(
             path: path,
             file: file,
             fieldName: fieldName,

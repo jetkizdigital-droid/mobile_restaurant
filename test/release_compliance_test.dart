@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jetkiz_restaurant/features/auth/presentation/pages/restaurant_auth_page.dart';
@@ -29,4 +31,22 @@ void main() {
     expect(find.textContaining('Введите код подтверждения'), findsOneWidget);
     expect(find.textContaining('SMS'), findsNothing);
   });
+  test('restaurant exposes in-app account deletion request flow', () {
+    final profileSource = File(
+      'lib/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart',
+    ).readAsStringSync();
+    final supportSource = File(
+      'lib/features/support/presentation/pages/restaurant_support_page.dart',
+    ).readAsStringSync();
+    final apiSource = File(
+      'lib/features/restaurant/data/restaurant_api.dart',
+    ).readAsStringSync();
+
+    expect(profileSource, contains("RestaurantSupportPage"));
+    expect(profileSource, contains("'Удалить аккаунт'"));
+    expect(supportSource, contains('_requestAccountDeletion'));
+    expect(supportSource, contains('Запросить удаление аккаунта'));
+    expect(apiSource, contains('/restaurants/me/deletion-request'));
+  });
+
 }

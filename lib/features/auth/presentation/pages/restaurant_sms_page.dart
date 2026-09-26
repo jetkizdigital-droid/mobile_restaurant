@@ -85,6 +85,7 @@ class _RestaurantSmsPageState extends State<RestaurantSmsPage> {
       }
 
       final me = await _authApi.getMe();
+      if (!mounted) return;
       final restaurantId = resolveRestaurantIdFromMe(me)?.trim();
       if (restaurantId == null || restaurantId.isEmpty) {
         _showError(

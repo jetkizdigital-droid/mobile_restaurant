@@ -65,7 +65,6 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
   bool get _isOwner => _role == _owner;
   bool get _isManager => _role == _owner || _role == _manager;
-  bool get _isStaff => _role == _staff;
   List<RestaurantBottomBarTab> get _visibleTabs =>
       _isManager ? _managerTabs : _staffTabs;
   String _t(String ru, String kk) => context.tr(ru, kk);
@@ -333,7 +332,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     if (_updating || !_isManager) return;
     final cms = _cms;
     if (cms != null && !cms.featureEnabled('ACCEPT_ORDERS_ENABLED')) {
-      _message(cms?.featureReason(
+      _message(cms.featureReason(
             'ACCEPT_ORDERS_ENABLED',
             kazakh: context.isKazakh,
           ) ??

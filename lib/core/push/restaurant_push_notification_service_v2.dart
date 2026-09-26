@@ -216,11 +216,36 @@ class RestaurantPushNotificationService {
 
   Future<String?> getToken() async {
     try {
-      return await _messaging.getToken();
+      if (Platform.isIOS) {
+        final apnsReady = await _waitForApnsToken();
+        if (!apnsReady) {
+          if (kDebugMode) {
+            debugPrint(
+              'RestaurantPush: APNs token unavailable; FCM token request deferred',
+            );
+          }
+          return null;
+        }
+      }
+
+      final token = await _messaging.getToken();
+      final normalized = token?.trim();
+      return normalized == null || normalized.isEmpty ? null : normalized;
     } catch (error) {
       if (kDebugMode) debugPrint('RestaurantPush: getToken failed: $error');
       return null;
     }
+  }
+
+  Future<bool> _waitForApnsToken() async {
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final token = await _messaging.getAPNSToken();
+      if (token != null && token.trim().isNotEmpty) return true;
+      if (attempt < 19) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+    }
+    return false;
   }
 
   Future<void> registerCurrentToken({
@@ -524,6 +549,7 @@ class RestaurantPushNotificationService {
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          sound: 'restaurant_order.wav',
           interruptionLevel: InterruptionLevel.timeSensitive,
         ),
       ),
