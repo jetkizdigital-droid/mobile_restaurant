@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - ios/restaurant-initial-release
+      - ios/restaurant-appstore-final-20260926
     paths:
       - 'lib/**'
       - 'test/**'
