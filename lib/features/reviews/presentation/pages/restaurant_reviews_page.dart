@@ -152,7 +152,7 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
               autofocus: true,
               minLines: 3,
               maxLines: 6,
-              maxLength: 2000,
+              maxLength: 3000,
               onChanged: (_) => setDialogState(() {}),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
@@ -194,14 +194,17 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
     if (responseText == null || responseText.trim().isEmpty || !mounted) return;
     setState(() => _mutatingReviewIds.add(review.id));
     try {
-      await _api.saveResponse(reviewId: review.id, text: responseText);
+      final savedResponse = await _api.saveResponse(
+        reviewId: review.id,
+        text: responseText,
+      );
       if (!mounted) return;
+      _replaceResponse(review.id, savedResponse);
       _showMessage(
         review.response == null
             ? _t('Ответ опубликован', 'Жауап жарияланды')
             : _t('Ответ обновлён', 'Жауап жаңартылды'),
       );
-      await _load(refresh: true);
     } catch (error) {
       if (mounted) _showMessage(_safeError(error));
     } finally {
@@ -245,13 +248,24 @@ class _RestaurantReviewsPageState extends State<RestaurantReviewsPage> {
     try {
       await _api.deleteResponse(reviewId: review.id);
       if (!mounted) return;
+      _replaceResponse(review.id, null);
       _showMessage(_t('Ответ удалён', 'Жауап жойылды'));
-      await _load(refresh: true);
     } catch (error) {
       if (mounted) _showMessage(_safeError(error));
     } finally {
       if (mounted) setState(() => _mutatingReviewIds.remove(review.id));
     }
+  }
+
+  void _replaceResponse(String reviewId, ReviewResponse? response) {
+    setState(() {
+      _items = _items
+          .map(
+            (item) =>
+                item.id == reviewId ? item.withResponse(response) : item,
+          )
+          .toList(growable: false);
+    });
   }
 
   void _showMessage(String message) {
