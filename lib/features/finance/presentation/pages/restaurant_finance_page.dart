@@ -292,6 +292,8 @@ class _RestaurantFinancePageState extends State<RestaurantFinancePage> {
                                   _PrimaryAmountCard(
                                     amount: _money(data.availableToWithdraw),
                                     periodLabel: _periodLabel(),
+                                    paylinkAmount: _money(data.paylinkSplitAmount),
+                                    showPaylink: data.paylinkSplitAmount > 0,
                                   ),
                                   const SizedBox(height: 12),
                                   _CommissionCard(
@@ -350,7 +352,10 @@ class _RestaurantFinancePageState extends State<RestaurantFinancePage> {
           children: [
             Expanded(
               child: _MetricCard(
-                label: _t('Выплачено', 'Төленді'),
+                label: _t(
+                  'Распределено / выплачено',
+                  'Бөлінді / төленді',
+                ),
                 value: _money(data.paidAmount),
               ),
             ),
@@ -796,9 +801,16 @@ class _DateField extends StatelessWidget {
 }
 
 class _PrimaryAmountCard extends StatelessWidget {
-  const _PrimaryAmountCard({required this.amount, required this.periodLabel});
+  const _PrimaryAmountCard({
+    required this.amount,
+    required this.periodLabel,
+    required this.paylinkAmount,
+    required this.showPaylink,
+  });
   final String amount;
   final String periodLabel;
+  final String paylinkAmount;
+  final bool showPaylink;
 
   @override
   Widget build(BuildContext context) {
@@ -833,6 +845,17 @@ class _PrimaryAmountCard extends StatelessWidget {
             '${context.tr('За период', 'Кезең')}: $periodLabel',
             style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
+          if (showPaylink) ...[
+            const SizedBox(height: 7),
+            Text(
+              '${context.tr('Уже распределено через PayLink', 'PayLink арқылы бөлінді')}: $paylinkAmount',
+              style: const TextStyle(
+                color: Color(0xFF86EFAC),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1033,7 +1056,10 @@ class _PeriodSummaryCard extends StatelessWidget {
             strong: true,
           ),
           _SummaryLine(
-            label: context.tr('Уже выплачено', 'Төленіп қойды'),
+            label: context.tr(
+              'Распределено / выплачено',
+              'Бөлінді / төленді',
+            ),
             value: paid,
           ),
         ],
