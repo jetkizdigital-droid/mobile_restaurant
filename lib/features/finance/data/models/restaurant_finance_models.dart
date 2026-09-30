@@ -43,7 +43,9 @@ class RestaurantFinanceResponse {
   }
 
   double get availableToWithdraw => payouts.pendingPayoutAmount;
-  double get paidAmount => payouts.paidPayoutAmount;
+  double get paidAmount => payouts.settledPayoutAmount;
+  double get manualPaidAmount => payouts.paidPayoutAmount;
+  double get paylinkSplitAmount => payouts.providerSettledPayoutAmount;
   double get assignedButUnpaidAmount => payouts.unpaidButAssignedAmount;
   double get grossRevenue => summary.grossTotal;
   double get commissionAmount => summary.commissionAmount;
@@ -202,6 +204,8 @@ class RestaurantFinancePayouts {
   const RestaurantFinancePayouts({
     required this.assignedPayoutAmount,
     required this.paidPayoutAmount,
+    required this.providerSettledPayoutAmount,
+    required this.settledPayoutAmount,
     required this.unpaidButAssignedAmount,
     required this.pendingPayoutAmount,
     required this.rows,
@@ -209,6 +213,8 @@ class RestaurantFinancePayouts {
 
   final double assignedPayoutAmount;
   final double paidPayoutAmount;
+  final double providerSettledPayoutAmount;
+  final double settledPayoutAmount;
   final double unpaidButAssignedAmount;
   final double pendingPayoutAmount;
   final List<RestaurantFinancePayoutRow> rows;
@@ -217,6 +223,14 @@ class RestaurantFinancePayouts {
     return RestaurantFinancePayouts(
       assignedPayoutAmount: _toDouble(json['assignedPayoutAmount']),
       paidPayoutAmount: _toDouble(json['paidPayoutAmount']),
+      providerSettledPayoutAmount: _toDouble(
+        json['providerSettledPayoutAmount'],
+      ),
+      settledPayoutAmount: _toDouble(
+        json['settledPayoutAmount'] ??
+            (_toDouble(json['paidPayoutAmount']) +
+                _toDouble(json['providerSettledPayoutAmount'])),
+      ),
       unpaidButAssignedAmount: _toDouble(json['unpaidButAssignedAmount']),
       pendingPayoutAmount: _toDouble(json['pendingPayoutAmount']),
       rows: _asList(json['rows'])
