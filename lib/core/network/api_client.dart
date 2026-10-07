@@ -126,6 +126,7 @@ class ApiClient {
     List<File> files = const [],
     String mainFieldName = 'main',
     String filesFieldName = 'files',
+    Map<String, String> fields = const <String, String>{},
     bool authRequired = true,
     bool isRetryAfterRefresh = false,
     int staleTokenRetries = 2,
@@ -137,6 +138,7 @@ class ApiClient {
       files: files,
       mainFieldName: mainFieldName,
       filesFieldName: filesFieldName,
+      fields: fields,
       authRequired: authRequired,
       isRetryAfterRefresh: isRetryAfterRefresh,
       staleTokenRetries: staleTokenRetries,
@@ -150,6 +152,7 @@ class ApiClient {
     List<File> files = const [],
     String mainFieldName = 'main',
     String filesFieldName = 'files',
+    Map<String, String> fields = const <String, String>{},
     bool authRequired = true,
     bool isRetryAfterRefresh = false,
     int staleTokenRetries = 2,
@@ -173,6 +176,7 @@ class ApiClient {
           restaurantId: requestScope.restaurantId,
         ),
       );
+      request.fields.addAll(fields);
 
       if (mainFile != null) {
         request.files.add(await _createMultipart(mainFieldName, mainFile));
@@ -204,6 +208,7 @@ class ApiClient {
             files: files,
             mainFieldName: mainFieldName,
             filesFieldName: filesFieldName,
+            fields: fields,
             authRequired: authRequired,
             isRetryAfterRefresh: true,
             staleTokenRetries: staleTokenRetries - 1,
@@ -221,6 +226,7 @@ class ApiClient {
             files: files,
             mainFieldName: mainFieldName,
             filesFieldName: filesFieldName,
+            fields: fields,
             authRequired: authRequired,
             isRetryAfterRefresh: true,
             staleTokenRetries: 2,
