@@ -36,9 +36,16 @@ class RestaurantMenuApi {
     return Map<String, dynamic>.from(response as Map);
   }
 
-  Future<void> deleteProduct(String restaurantId, String productId) async {
+  Future<Map<String, dynamic>> deleteProduct(
+    String restaurantId,
+    String productId,
+  ) async {
     _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
-    await _client.delete('/restaurants/$restaurantId/menu/products/$productId');
+    final response =
+        await _client.delete('/restaurants/$restaurantId/menu/products/$productId');
+    return response is Map
+        ? Map<String, dynamic>.from(response)
+        : <String, dynamic>{};
   }
 
   Future<void> updateAvailability({

@@ -29,7 +29,7 @@ class RestaurantMenuData {
               _requiredMap(e, 'product'),
             ),
           )
-          .toList(growable: false),
+          .toList(growable: true),
     );
   }
 }
