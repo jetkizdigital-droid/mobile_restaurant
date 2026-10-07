@@ -21,6 +21,10 @@ class RestaurantProfileData {
   final int? sortOrder;
   final num? restaurantCommissionPctOverride;
   final num? effectiveRestaurantCommissionPct;
+  final bool cutleryEnabled;
+  final int cutleryFreeLimit;
+  final int cutleryUnitPrice;
+  final int cutleryMaxCount;
 
   // Legacy compatibility fields.
   final String? imageUrl;
@@ -52,6 +56,10 @@ class RestaurantProfileData {
     this.sortOrder,
     this.restaurantCommissionPctOverride,
     this.effectiveRestaurantCommissionPct,
+    this.cutleryEnabled = false,
+    this.cutleryFreeLimit = 0,
+    this.cutleryUnitPrice = 0,
+    this.cutleryMaxCount = 10,
     this.imageUrl,
     this.localImagePath,
     this.workDays,
@@ -89,6 +97,12 @@ class RestaurantProfileData {
       effectiveRestaurantCommissionPct: _toNum(
         json['effectiveRestaurantCommissionPct'],
       ),
+      cutleryEnabled: json['cutleryEnabled'] == true,
+      cutleryFreeLimit: _toInt(json['cutleryFreeLimit']) ?? 0,
+      cutleryUnitPrice: _toInt(json['cutleryUnitPrice']) ?? 0,
+      cutleryMaxCount: (_toInt(json['cutleryMaxCount']) ?? 10) > 0
+          ? (_toInt(json['cutleryMaxCount']) ?? 10)
+          : 10,
       imageUrl: json['imageUrl']?.toString(),
       localImagePath: json['localImagePath']?.toString(),
       workDays: (json['workDays'] as List?)?.map((e) => e.toString()).toList(),
@@ -371,6 +385,12 @@ class RestaurantProfileData {
     return text == null || text.isEmpty || text.toLowerCase() == 'null'
         ? null
         : text;
+  }
+
+  static int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+    return int.tryParse(value?.toString() ?? '');
   }
 
   static num? _toNum(dynamic value) {

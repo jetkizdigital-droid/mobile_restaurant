@@ -55,6 +55,11 @@ class RestaurantOrderDetails {
   final int deliveryFee;
   final int discountAmount;
   final int deliveryDiscountAmount;
+  final int cutleryCount;
+  final int cutleryFreeLimitApplied;
+  final int cutleryUnitPriceApplied;
+  final int cutleryPaidCount;
+  final int cutleryAmount;
   final int total;
 
   final String? phone;
@@ -89,6 +94,11 @@ class RestaurantOrderDetails {
     required this.deliveryFee,
     required this.discountAmount,
     required this.deliveryDiscountAmount,
+    this.cutleryCount = 0,
+    this.cutleryFreeLimitApplied = 0,
+    this.cutleryUnitPriceApplied = 0,
+    this.cutleryPaidCount = 0,
+    this.cutleryAmount = 0,
     required this.total,
     required this.leaveAtDoor,
     required this.items,
@@ -189,6 +199,13 @@ class RestaurantOrderDetails {
       deliveryFee: _toInt(json['deliveryFee']) ?? 0,
       discountAmount: _toInt(json['discountAmount']) ?? 0,
       deliveryDiscountAmount: _toInt(json['deliveryDiscountAmount']) ?? 0,
+      cutleryCount: _toInt(json['cutleryCount']) ?? 0,
+      cutleryFreeLimitApplied:
+          _toInt(json['cutleryFreeLimitApplied']) ?? 0,
+      cutleryUnitPriceApplied:
+          _toInt(json['cutleryUnitPriceApplied']) ?? 0,
+      cutleryPaidCount: _toInt(json['cutleryPaidCount']) ?? 0,
+      cutleryAmount: _toInt(json['cutleryAmount']) ?? 0,
       total: _toInt(json['total']) ?? 0,
 
       phone: _toNullableString(json['phone']),

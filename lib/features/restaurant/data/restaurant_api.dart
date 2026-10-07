@@ -43,6 +43,25 @@ class RestaurantApi {
     return getMyRestaurant();
   }
 
+  Future<RestaurantProfileData> updateCutlerySettings({
+    required bool enabled,
+    required int freeLimit,
+    required int unitPrice,
+    required int maxCount,
+  }) async {
+    await _client.patch(
+      '/restaurants/me',
+      {
+        'cutleryEnabled': enabled,
+        'cutleryFreeLimit': freeLimit,
+        'cutleryUnitPrice': unitPrice,
+        'cutleryMaxCount': maxCount,
+      },
+    );
+
+    return getMyRestaurant();
+  }
+
   Future<RestaurantProfileData> setAcceptingOrders(bool value) async {
     await _client.patch(
       '/restaurants/me/accepting-orders',

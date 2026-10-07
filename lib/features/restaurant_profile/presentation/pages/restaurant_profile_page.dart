@@ -47,6 +47,13 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _workingHoursController = TextEditingController();
+  final TextEditingController _cutleryFreeLimitController =
+      TextEditingController();
+  final TextEditingController _cutleryUnitPriceController =
+      TextEditingController();
+  final TextEditingController _cutleryMaxCountController =
+      TextEditingController();
+  bool _cutleryEnabled = false;
 
   List<_RestaurantBranch> _branches = const <_RestaurantBranch>[];
   String? _selectedRestaurantId;
@@ -70,6 +77,9 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
     _phoneController.dispose();
     _addressController.dispose();
     _workingHoursController.dispose();
+    _cutleryFreeLimitController.dispose();
+    _cutleryUnitPriceController.dispose();
+    _cutleryMaxCountController.dispose();
     super.dispose();
   }
 
@@ -359,6 +369,10 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       profile.workingHours ?? '',
       profile.workingHoursFrom ?? '',
       profile.workingHoursTo ?? '',
+      profile.cutleryEnabled.toString(),
+      profile.cutleryFreeLimit.toString(),
+      profile.cutleryUnitPrice.toString(),
+      profile.cutleryMaxCount.toString(),
     ].join('|');
     if (_lastProfileSyncKey == key) return;
 
@@ -373,6 +387,10 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
     } else {
       _workingHoursController.clear();
     }
+    _cutleryEnabled = profile.cutleryEnabled;
+    _cutleryFreeLimitController.text = profile.cutleryFreeLimit.toString();
+    _cutleryUnitPriceController.text = profile.cutleryUnitPrice.toString();
+    _cutleryMaxCountController.text = profile.cutleryMaxCount.toString();
     _lastProfileSyncKey = key;
   }
 
@@ -380,6 +398,12 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
     final workingHours = _workingHoursController.text.trim();
+    final cutleryFreeLimit =
+        int.tryParse(_cutleryFreeLimitController.text.trim());
+    final cutleryUnitPrice =
+        int.tryParse(_cutleryUnitPriceController.text.trim());
+    final cutleryMaxCount =
+        int.tryParse(_cutleryMaxCountController.text.trim());
 
     if (address.isEmpty) {
       _showSnackBar(_t('Введите адрес', 'Мекенжайды енгізіңіз'));
@@ -394,12 +418,53 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       return;
     }
 
+    if (cutleryFreeLimit == null ||
+        cutleryFreeLimit < 0 ||
+        cutleryFreeLimit > 20) {
+      _showSnackBar(_t(
+        'Бесплатных приборов должно быть от 0 до 20',
+        'Тегін құралдар саны 0-ден 20-ға дейін болуы керек',
+      ));
+      return;
+    }
+    if (cutleryUnitPrice == null ||
+        cutleryUnitPrice < 0 ||
+        cutleryUnitPrice > 5000) {
+      _showSnackBar(_t(
+        'Цена прибора должна быть от 0 до 5000 ₸',
+        'Құрал бағасы 0-ден 5000 ₸-ге дейін болуы керек',
+      ));
+      return;
+    }
+    if (cutleryMaxCount == null ||
+        cutleryMaxCount < 1 ||
+        cutleryMaxCount > 20) {
+      _showSnackBar(_t(
+        'Максимум приборов должен быть от 1 до 20',
+        'Құралдардың максимумы 1-ден 20-ға дейін болуы керек',
+      ));
+      return;
+    }
+    if (cutleryFreeLimit > cutleryMaxCount) {
+      _showSnackBar(_t(
+        'Бесплатный лимит не может быть больше максимума',
+        'Тегін лимит максимумнан көп болмауы керек',
+      ));
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
-      final updated = await _restaurantApi.updateMe(
+      await _restaurantApi.updateMe(
         address: address,
         phone: phone,
         workingHours: workingHours,
+      );
+      final updated = await _restaurantApi.updateCutlerySettings(
+        enabled: _cutleryEnabled,
+        freeLimit: cutleryFreeLimit,
+        unitPrice: cutleryUnitPrice,
+        maxCount: cutleryMaxCount,
       );
       _syncControllers(updated);
       if (!mounted) return;
@@ -682,6 +747,17 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
             hint: '09:00 - 22:00',
           ),
           const SizedBox(height: 12),
+          _CutlerySettingsCard(
+            enabled: _cutleryEnabled,
+            freeLimitController: _cutleryFreeLimitController,
+            unitPriceController: _cutleryUnitPriceController,
+            maxCountController: _cutleryMaxCountController,
+            editing: _isEditing && !_isSaving,
+            onEnabledChanged: (value) {
+              setState(() => _cutleryEnabled = value);
+            },
+          ),
+          const SizedBox(height: 12),
           _StatusCard(status: profile.status),
           if (_isEditing) ...[
             const SizedBox(height: 16),
@@ -729,6 +805,121 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
             ),
             icon: const Icon(Icons.logout_rounded),
             label: Text(_t('Выйти из аккаунта', 'Аккаунттан шығу')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CutlerySettingsCard extends StatelessWidget {
+  const _CutlerySettingsCard({
+    required this.enabled,
+    required this.freeLimitController,
+    required this.unitPriceController,
+    required this.maxCountController,
+    required this.editing,
+    required this.onEnabledChanged,
+  });
+
+  final bool enabled;
+  final TextEditingController freeLimitController;
+  final TextEditingController unitPriceController;
+  final TextEditingController maxCountController;
+  final bool editing;
+  final ValueChanged<bool> onEnabledChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    InputDecoration decoration(String label) => InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.white60),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF334155)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF489F2A)),
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131E2D),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF263244)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flatware_rounded, color: Color(0xFF86EFAC)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  context.tr('Приборы', 'Құралдар'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Switch(
+                value: enabled,
+                onChanged: editing ? onEnabledChanged : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            enabled
+                ? context.tr(
+                    'Ресторан выдаёт приборы. При превышении бесплатного лимита применяется цена за каждый дополнительный комплект.',
+                    'Мейрамхана құралдар береді. Тегін лимиттен асқанда әр қосымша жиынтық үшін баға есептеледі.',
+                  )
+                : context.tr(
+                    'Приборы отключены для этого филиала.',
+                    'Бұл филиалда құралдар өшірілген.',
+                  ),
+            style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: freeLimitController,
+                  enabled: editing,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: decoration(context.tr('Бесплатно', 'Тегін')),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: unitPriceController,
+                  enabled: editing,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: decoration(context.tr('Цена, ₸', 'Баға, ₸')),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: maxCountController,
+                  enabled: editing,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: decoration(context.tr('Максимум', 'Максимум')),
+                ),
+              ),
+            ],
           ),
         ],
       ),
