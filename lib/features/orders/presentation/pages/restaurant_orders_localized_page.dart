@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:jetkiz_restaurant/core/widgets/jetkiz_wordmark.dart';
 import 'package:jetkiz_restaurant/core/localization/app_locale_controller.dart';
+import 'package:jetkiz_restaurant/core/network/api_client.dart';
 import 'package:jetkiz_restaurant/core/push/restaurant_push_notification_service.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_api.dart';
 import 'package:jetkiz_restaurant/features/orders/data/restaurant_orders_sync_bus.dart';
@@ -238,6 +239,8 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
       }
       if (!mounted) return;
 
+      // Any list request started before this mutation is now stale.
+      _loadGeneration++;
       setState(() {
         _allOrders = _allOrders.map((item) {
           return _orderId(item) == orderId ? updated : item;
@@ -455,6 +458,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
     if (confirmed != true || !mounted) return;
 
     final orderId = _orderId(order);
+    final restaurantId = ApiClient.instance.selectedRestaurantId?.trim();
     if (orderId.isEmpty ||
         _pendingReadyOrderIds.contains(orderId) ||
         _updatingOrderIds.contains(orderId)) {
@@ -472,7 +476,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
         if (mounted) setState(() {});
         return;
       }
-      unawaited(_commitReady(order, orderId));
+      unawaited(_commitReady(order, orderId, restaurantId));
     });
     _pendingReadyTimers[orderId] = timer;
 
@@ -508,6 +512,7 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
   Future<void> _commitReady(
     Map<String, dynamic> order,
     String orderId,
+    String? restaurantId,
   ) async {
     _updatingOrderIds.add(orderId);
     if (mounted) setState(() {});
@@ -516,9 +521,11 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
       final updated = await _ordersApi.updateOrderStatus(
         id: orderId,
         status: 'READY',
+        restaurantId: restaurantId,
       );
 
       if (!mounted) return;
+      _loadGeneration++;
       setState(() {
         _allOrders = _allOrders.map((item) {
           return _orderId(item) == orderId ? updated : item;

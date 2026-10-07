@@ -70,12 +70,22 @@ class ApiClient {
     String path,
     Map<String, dynamic> body, {
     bool authRequired = true,
+    String? restaurantId,
   }) async {
+    final normalizedRestaurantId = restaurantId?.trim();
     return _send(
       method: 'PATCH',
       path: path,
       body: body,
       authRequired: authRequired,
+      requestScope: restaurantId == null
+          ? null
+          : _RequestScope(
+              restaurantId: normalizedRestaurantId == null ||
+                      normalizedRestaurantId.isEmpty
+                  ? null
+                  : normalizedRestaurantId,
+            ),
     );
   }
 
@@ -120,6 +130,31 @@ class ApiClient {
     bool isRetryAfterRefresh = false,
     int staleTokenRetries = 2,
   }) async {
+    final requestScope = await _captureRequestScope();
+    return _uploadFiles(
+      path,
+      mainFile: mainFile,
+      files: files,
+      mainFieldName: mainFieldName,
+      filesFieldName: filesFieldName,
+      authRequired: authRequired,
+      isRetryAfterRefresh: isRetryAfterRefresh,
+      staleTokenRetries: staleTokenRetries,
+      requestScope: requestScope,
+    );
+  }
+
+  Future<dynamic> _uploadFiles(
+    String path, {
+    File? mainFile,
+    List<File> files = const [],
+    String mainFieldName = 'main',
+    String filesFieldName = 'files',
+    bool authRequired = true,
+    bool isRetryAfterRefresh = false,
+    int staleTokenRetries = 2,
+    required _RequestScope requestScope,
+  }) async {
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
     final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
 
@@ -135,6 +170,7 @@ class ApiClient {
           authRequired: authRequired,
           isJson: false,
           accessToken: accessTokenUsed,
+          restaurantId: requestScope.restaurantId,
         ),
       );
 
@@ -162,7 +198,7 @@ class ApiClient {
         final latestAccessToken = await _storage.getAccessToken();
         if (staleTokenRetries > 0 &&
             _hasAccessTokenChanged(accessTokenUsed, latestAccessToken)) {
-          return uploadFiles(
+          return _uploadFiles(
             path,
             mainFile: mainFile,
             files: files,
@@ -171,6 +207,7 @@ class ApiClient {
             authRequired: authRequired,
             isRetryAfterRefresh: true,
             staleTokenRetries: staleTokenRetries - 1,
+            requestScope: requestScope,
           );
         }
       }
@@ -178,7 +215,7 @@ class ApiClient {
       if (response.statusCode == 401 && authRequired && !isRetryAfterRefresh) {
         final refreshResult = await _tryRefresh();
         if (refreshResult == _RefreshResult.refreshed) {
-          return uploadFiles(
+          return _uploadFiles(
             path,
             mainFile: mainFile,
             files: files,
@@ -187,6 +224,7 @@ class ApiClient {
             authRequired: authRequired,
             isRetryAfterRefresh: true,
             staleTokenRetries: 2,
+            requestScope: requestScope,
           );
         }
         if (refreshResult == _RefreshResult.invalidSession) {
@@ -231,7 +269,9 @@ class ApiClient {
     required bool authRequired,
     bool isRetryAfterRefresh = false,
     int staleTokenRetries = 2,
+    _RequestScope? requestScope,
   }) async {
+    final scope = requestScope ?? await _captureRequestScope();
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
     final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
 
@@ -241,6 +281,7 @@ class ApiClient {
       authRequired: authRequired,
       isJson: true,
       accessToken: accessTokenUsed,
+      restaurantId: scope.restaurantId,
     );
 
     late http.Response response;
@@ -349,6 +390,7 @@ class ApiClient {
           authRequired: authRequired,
           isRetryAfterRefresh: true,
           staleTokenRetries: staleTokenRetries - 1,
+          requestScope: scope,
         );
       }
     }
@@ -363,6 +405,7 @@ class ApiClient {
           authRequired: authRequired,
           isRetryAfterRefresh: true,
           staleTokenRetries: 2,
+          requestScope: scope,
         );
       }
       if (refreshResult == _RefreshResult.invalidSession) {
@@ -389,7 +432,9 @@ class ApiClient {
     required bool authRequired,
     bool isRetryAfterRefresh = false,
     int staleTokenRetries = 2,
+    _RequestScope? requestScope,
   }) async {
+    final scope = requestScope ?? await _captureRequestScope();
     final uri = Uri.parse('${AppConfig.baseUrl}$path');
     final accessTokenUsed = authRequired ? await _storage.getAccessToken() : null;
 
@@ -401,6 +446,7 @@ class ApiClient {
           authRequired: authRequired,
           isJson: false,
           accessToken: accessTokenUsed,
+          restaurantId: scope.restaurantId,
         ),
       );
 
@@ -429,6 +475,7 @@ class ApiClient {
             authRequired: authRequired,
             isRetryAfterRefresh: true,
             staleTokenRetries: staleTokenRetries - 1,
+            requestScope: scope,
           );
         }
       }
@@ -443,6 +490,7 @@ class ApiClient {
             authRequired: authRequired,
             isRetryAfterRefresh: true,
             staleTokenRetries: 2,
+            requestScope: scope,
           );
         }
         if (refreshResult == _RefreshResult.invalidSession) {
@@ -477,9 +525,27 @@ class ApiClient {
     }
   }
 
+  Future<_RequestScope> _captureRequestScope() async {
+    var restaurantId = _selectedRestaurantId?.trim();
+
+    if (restaurantId == null || restaurantId.isEmpty) {
+      final storedRestaurantId =
+          (await _storage.getSelectedRestaurantId())?.trim();
+      if (storedRestaurantId != null && storedRestaurantId.isNotEmpty) {
+        _selectedRestaurantId = storedRestaurantId;
+        restaurantId = storedRestaurantId;
+      } else {
+        restaurantId = null;
+      }
+    }
+
+    return _RequestScope(restaurantId: restaurantId);
+  }
+
   Future<Map<String, String>> _buildHeaders({
     required bool authRequired,
     required bool isJson,
+    required String? restaurantId,
     String? accessToken,
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
@@ -495,12 +561,6 @@ class ApiClient {
       }
     }
 
-    if (_selectedRestaurantId == null ||
-        _selectedRestaurantId!.trim().isEmpty) {
-      _selectedRestaurantId = await _storage.getSelectedRestaurantId();
-    }
-
-    final restaurantId = _selectedRestaurantId?.trim();
     if (restaurantId != null && restaurantId.isNotEmpty) {
       headers['x-restaurant-id'] = restaurantId;
     }
@@ -707,6 +767,12 @@ class ApiClient {
       return body;
     }
   }
+}
+
+class _RequestScope {
+  const _RequestScope({required this.restaurantId});
+
+  final String? restaurantId;
 }
 
 class ApiException implements Exception {

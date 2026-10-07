@@ -101,6 +101,7 @@ class RestaurantOrdersApi {
   Future<Map<String, dynamic>> updateOrderStatus({
     required String id,
     required String status,
+    String? restaurantId,
   }) async {
     final normalizedStatus = status.trim().toUpperCase();
     final cms = RestaurantAppCmsSession.instance;
@@ -124,6 +125,7 @@ class RestaurantOrdersApi {
     final dynamic response = await _apiClient.patch(
       '/orders/$id/status',
       <String, dynamic>{'status': normalizedStatus},
+      restaurantId: restaurantId,
     );
 
     if (response is Map) {
