@@ -402,6 +402,8 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
                     ),
                   ],
                   const SizedBox(height: 14),
+                  _CutleryOrderCard(order: order),
+                  const SizedBox(height: 14),
                   _SectionCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,6 +440,57 @@ class _RestaurantOrderDetailsPageState extends State<RestaurantOrderDetailsPage>
   }
 
   static String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+class _CutleryOrderCard extends StatelessWidget {
+  const _CutleryOrderCard({required this.order});
+  final RestaurantOrderDetails order;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = order.cutleryCount;
+    final paidCount = order.cutleryPaidCount;
+    final amount = order.cutleryAmount;
+
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flatware_rounded, color: Color(0xFF86EFAC)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  count > 0
+                      ? '${context.tr('ПРИБОРЫ', 'ҚҰРАЛДАР')}: $count'
+                      : context.tr('БЕЗ ПРИБОРОВ', 'ҚҰРАЛСЫЗ'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (count > 0) ...[
+            const SizedBox(height: 10),
+            _InfoRow(
+              label: context.tr('Бесплатный лимит', 'Тегін лимит'),
+              value: '${order.cutleryFreeLimitApplied}',
+            ),
+            if (paidCount > 0)
+              _InfoRow(
+                label: context.tr('Платные приборы', 'Ақылы құралдар'),
+                value:
+                    '$paidCount × ${order.cutleryUnitPriceApplied} ₸ = $amount ₸',
+              ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _OrderDetailsLoadException implements Exception {

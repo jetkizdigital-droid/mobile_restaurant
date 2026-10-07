@@ -30,6 +30,10 @@ class RestaurantApi {
     required String address,
     required String phone,
     required String workingHours,
+    bool? cutleryEnabled,
+    int? cutleryFreeLimit,
+    int? cutleryUnitPrice,
+    int? cutleryMaxCount,
   }) async {
     await _client.patch(
       '/restaurants/me',
@@ -37,6 +41,10 @@ class RestaurantApi {
         'address': address,
         'phone': phone,
         'workingHours': workingHours,
+        if (cutleryEnabled != null) 'cutleryEnabled': cutleryEnabled,
+        if (cutleryFreeLimit != null) 'cutleryFreeLimit': cutleryFreeLimit,
+        if (cutleryUnitPrice != null) 'cutleryUnitPrice': cutleryUnitPrice,
+        if (cutleryMaxCount != null) 'cutleryMaxCount': cutleryMaxCount,
       },
     );
 

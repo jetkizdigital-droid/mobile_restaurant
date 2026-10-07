@@ -821,6 +821,8 @@ class _RestaurantOrdersPageState extends State<RestaurantOrdersPage>
           total: _money(order, 'total'),
           subtotal: _money(order, 'subtotal'),
           deliveryFee: _money(order, 'deliveryFee'),
+          cutleryCount: _money(order, 'cutleryCount'),
+          cutleryAmount: _money(order, 'cutleryAmount'),
           paymentStatus: _string(order['paymentStatus']),
           clientName: _clientName(order),
           courierName: pickup
@@ -979,6 +981,8 @@ class _RestaurantOrderCard extends StatelessWidget {
     required this.total,
     required this.subtotal,
     required this.deliveryFee,
+    required this.cutleryCount,
+    required this.cutleryAmount,
     required this.paymentStatus,
     required this.clientName,
     required this.courierName,
@@ -1000,6 +1004,8 @@ class _RestaurantOrderCard extends StatelessWidget {
   final int total;
   final int subtotal;
   final int deliveryFee;
+  final int cutleryCount;
+  final int cutleryAmount;
   final String paymentStatus;
   final String clientName;
   final String courierName;
@@ -1091,6 +1097,8 @@ class _RestaurantOrderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          _CutleryBadge(count: cutleryCount),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
@@ -1138,6 +1146,8 @@ class _RestaurantOrderCard extends StatelessWidget {
           _MoneyRow(
             subtotal: subtotal,
             deliveryFee: deliveryFee,
+            cutleryCount: cutleryCount,
+            cutleryAmount: cutleryAmount,
             total: total,
             paymentStatus: paymentStatus,
             isPickup: isPickup,
@@ -1163,6 +1173,49 @@ class _RestaurantOrderCard extends StatelessWidget {
               }).toList(),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CutleryBadge extends StatelessWidget {
+  const _CutleryBadge({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasCutlery = count > 0;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: hasCutlery
+            ? const Color(0xFF14532D).withValues(alpha: 0.45)
+            : const Color(0xFF1F2937),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: hasCutlery ? const Color(0xFF86EFAC) : const Color(0xFF475569),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.flatware_rounded,
+            size: 18,
+            color: hasCutlery ? const Color(0xFF86EFAC) : const Color(0xFF94A3B8),
+          ),
+          const SizedBox(width: 9),
+          Text(
+            hasCutlery
+                ? '${context.tr('ПРИБОРЫ', 'ҚҰРАЛДАР')}: $count'
+                : context.tr('БЕЗ ПРИБОРОВ', 'ҚҰРАЛСЫЗ'),
+            style: TextStyle(
+              color: hasCutlery ? const Color(0xFFDCFCE7) : const Color(0xFFCBD5E1),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ],
       ),
     );
@@ -1296,6 +1349,8 @@ class _MoneyRow extends StatelessWidget {
   const _MoneyRow({
     required this.subtotal,
     required this.deliveryFee,
+    required this.cutleryCount,
+    required this.cutleryAmount,
     required this.total,
     required this.paymentStatus,
     required this.isPickup,
@@ -1303,6 +1358,8 @@ class _MoneyRow extends StatelessWidget {
 
   final int subtotal;
   final int deliveryFee;
+  final int cutleryCount;
+  final int cutleryAmount;
   final int total;
   final String paymentStatus;
   final bool isPickup;
@@ -1326,6 +1383,15 @@ class _MoneyRow extends StatelessWidget {
                 ? context.tr('Самовывоз', 'Өзі алып кету')
                 : '$deliveryFee ₸',
           ),
+          if (cutleryCount > 0) ...[
+            const SizedBox(height: 5),
+            _Line(
+              label: context.tr('Приборы', 'Құралдар'),
+              value: cutleryAmount == 0
+                  ? context.tr('Бесплатно', 'Тегін')
+                  : '$cutleryAmount ₸',
+            ),
+          ],
           const SizedBox(height: 5),
           _Line(
             label: context.tr('Оплата', 'Төлем'),

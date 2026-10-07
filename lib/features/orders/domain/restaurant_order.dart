@@ -48,6 +48,8 @@ class RestaurantOrder {
 
   final int subtotal;
   final int deliveryFee;
+  final int cutleryCount;
+  final int cutleryAmount;
   final int total;
 
   final String? paymentStatus;
@@ -76,6 +78,8 @@ class RestaurantOrder {
     required this.status,
     required this.subtotal,
     required this.deliveryFee,
+    this.cutleryCount = 0,
+    this.cutleryAmount = 0,
     required this.total,
     required this.leaveAtDoor,
     required this.items,
@@ -113,6 +117,8 @@ class RestaurantOrder {
 
       subtotal: _toInt(json['subtotal']) ?? 0,
       deliveryFee: _toInt(json['deliveryFee']) ?? 0,
+      cutleryCount: _toInt(json['cutleryCount']) ?? 0,
+      cutleryAmount: _toInt(json['cutleryAmount']) ?? 0,
       total: _toInt(json['total']) ?? 0,
 
       paymentStatus: _toNullableString(json['paymentStatus']),
