@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -25,6 +26,7 @@ class UpsertMenuItemPage extends StatefulWidget {
 class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   final RestaurantMenuApi _api = RestaurantMenuApi();
   final ImagePicker _picker = ImagePicker();
+  late final String _saveProductId;
 
   final TextEditingController _titleRuController = TextEditingController();
   final TextEditingController _titleKkController = TextEditingController();
@@ -53,6 +55,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   @override
   void initState() {
     super.initState();
+    _saveProductId = widget.item?.id ?? _newUuidV4();
     _fillInitialData();
     _loadCategories();
   }
@@ -316,59 +319,36 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
     };
 
     try {
-      String productId;
-      if (_isEdit) {
-        productId = widget.item!.id;
-        await _api.updateProduct(widget.restaurantId, productId, data);
-        if (widget.item!.isAvailable != _isAvailable) {
-          if (!cms.featureEnabled('STOP_LIST_ENABLED')) {
-            throw _StopListUnavailable(
-              cms.featureReason(
-                'STOP_LIST_ENABLED',
-                kazakh: context.isKazakh,
-              ),
-            );
-          }
-          await _api.updateAvailability(
-            restaurantId: widget.restaurantId,
-            productId: productId,
-            value: _isAvailable,
-          );
-        }
-      } else {
-        final created = await _api.createProduct(widget.restaurantId, data);
-        productId = created['id']?.toString().trim() ?? '';
-        if (productId.isEmpty) throw const _ProductCreatedWithoutId();
-        if (!_isAvailable) {
-          if (!cms.featureEnabled('STOP_LIST_ENABLED')) {
-            throw _StopListUnavailable(
-              cms.featureReason(
-                'STOP_LIST_ENABLED',
-                kazakh: context.isKazakh,
-              ),
-            );
-          }
-          await _api.updateAvailability(
-            restaurantId: widget.restaurantId,
-            productId: productId,
-            value: false,
-          );
-        }
-      }
+      final availabilityChanged = _isEdit
+          ? widget.item!.isAvailable != _isAvailable
+          : !_isAvailable;
 
-      if (_mainImageFile != null || _otherImageFiles.isNotEmpty) {
-        final mainImage = _mainImageFile ??
-            (_otherImageFiles.isNotEmpty ? _otherImageFiles.first : null);
-        final others = _mainImageFile != null
-            ? List<File>.from(_otherImageFiles)
-            : _otherImageFiles.skip(1).toList(growable: false);
-        await _api.replaceProductImages(
-          restaurantId: widget.restaurantId,
-          productId: productId,
-          mainImage: mainImage,
-          otherImages: others,
+      if (availabilityChanged &&
+          !cms.featureEnabled('STOP_LIST_ENABLED')) {
+        throw _StopListUnavailable(
+          cms.featureReason(
+            'STOP_LIST_ENABLED',
+            kazakh: context.isKazakh,
+          ),
         );
       }
+
+      final mainImage = _mainImageFile ??
+          (_otherImageFiles.isNotEmpty ? _otherImageFiles.first : null);
+      final others = _mainImageFile != null
+          ? List<File>.from(_otherImageFiles)
+          : _otherImageFiles.skip(1).toList(growable: false);
+
+      await _api.saveProductAtomic(
+        restaurantId: widget.restaurantId,
+        productId: _saveProductId,
+        isCreate: !_isEdit,
+        data: data,
+        isAvailable: _isAvailable,
+        availabilityChanged: availabilityChanged,
+        mainImage: mainImage,
+        otherImages: others,
+      );
 
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -380,12 +360,7 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
                 'Стоп-лист временно недоступен.',
                 'Стоп-парақ уақытша қолжетімсіз.',
               ))
-          : error is _ProductCreatedWithoutId
-              ? _t(
-                  'Блюдо создано. Обновите меню, чтобы увидеть его.',
-                  'Тағам жасалды. Оны көру үшін мәзірді жаңартыңыз.',
-                )
-              : _safeError(error);
+          : _safeError(error);
       setState(() {
         _errorText = message;
         _isSaving = false;
@@ -901,13 +876,23 @@ class _UpsertMenuItemPageState extends State<UpsertMenuItemPage> {
   }
 }
 
+String _newUuidV4() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex =
+      bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-'
+      '${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-'
+      '${hex.substring(16, 20)}-'
+      '${hex.substring(20)}';
+}
+
 class _StopListUnavailable implements Exception {
   const _StopListUnavailable(this.message);
   final String? message;
-}
-
-class _ProductCreatedWithoutId implements Exception {
-  const _ProductCreatedWithoutId();
 }
 
 class _ErrorCard extends StatelessWidget {

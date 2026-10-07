@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -58,6 +59,62 @@ class RestaurantMenuApi {
       '/restaurants/$restaurantId/menu/products/$productId',
       {'isAvailable': value},
     );
+  }
+
+  Future<Map<String, dynamic>> saveProductAtomic({
+    required String restaurantId,
+    required String productId,
+    required bool isCreate,
+    required Map<String, dynamic> data,
+    required bool isAvailable,
+    required bool availabilityChanged,
+    File? mainImage,
+    List<File> otherImages = const [],
+  }) async {
+    _requireFeature('MENU_EDIT_ENABLED', 'Редактирование меню недоступно');
+    if (availabilityChanged) {
+      _requireFeature('STOP_LIST_ENABLED', 'Стоп-лист временно недоступен');
+    }
+
+    final totalImages = (mainImage == null ? 0 : 1) + otherImages.length;
+    if (totalImages > maxProductImages) {
+      throw Exception(
+        'Можно загрузить максимум $maxProductImages фото блюда',
+      );
+    }
+
+    final preparedMain =
+        mainImage == null ? null : await _prepareUploadImage(mainImage);
+    final preparedOthers = <File>[];
+    for (final image in otherImages) {
+      preparedOthers.add(await _prepareUploadImage(image));
+    }
+
+    final payload = <String, dynamic>{
+      'mode': isCreate ? 'create' : 'update',
+      'productId': productId,
+      ...data,
+      'isAvailable': isAvailable,
+      'availabilityChanged': availabilityChanged,
+      'deletedImageIds': _pendingDeletedImageIds.toList(growable: false),
+      'mainImageId': _pendingMainImageId,
+    };
+
+    final response = await _client.uploadFiles(
+      '/restaurants/$restaurantId/menu/products/save',
+      mainFile: preparedMain,
+      files: preparedOthers,
+      mainFieldName: 'main',
+      filesFieldName: 'others',
+      fields: <String, String>{'payload': jsonEncode(payload)},
+    );
+
+    _pendingDeletedImageIds.clear();
+    _pendingMainImageId = null;
+
+    return response is Map
+        ? Map<String, dynamic>.from(response)
+        : <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>> createProduct(
