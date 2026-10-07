@@ -261,10 +261,21 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     if (confirmed != true) return;
 
     try {
-      await _api.deleteProduct(restaurantId, item.id);
+      final result = await _api.deleteProduct(restaurantId, item.id);
       if (!mounted) return;
-      setState(() => _items.removeWhere((current) => current.id == item.id));
-      _showMessage(_t('Блюдо удалено', 'Тағам жойылды'));
+
+      setState(() {
+        _items = _items
+            .where((current) => current.id != item.id)
+            .toList(growable: true);
+      });
+
+      final backendMessage = result['message']?.toString().trim() ?? '';
+      _showMessage(
+        backendMessage.isNotEmpty
+            ? backendMessage
+            : _t('Блюдо удалено', 'Тағам жойылды'),
+      );
     } catch (error) {
       if (mounted) _showMessage(_safeError(error));
     }
