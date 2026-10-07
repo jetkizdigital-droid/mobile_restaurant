@@ -35,7 +35,7 @@ class RestaurantApi {
     int? cutleryUnitPrice,
     int? cutleryMaxCount,
   }) async {
-    await _client.patch(
+    final response = await _client.patch(
       '/restaurants/me',
       {
         'address': address,
@@ -47,6 +47,27 @@ class RestaurantApi {
         if (cutleryMaxCount != null) 'cutleryMaxCount': cutleryMaxCount,
       },
     );
+
+    if (response is Map) {
+      return RestaurantProfileData.fromJson(
+        Map<String, dynamic>.from(response),
+      );
+    }
+
+    return getMyRestaurant();
+  }
+
+  Future<RestaurantProfileData> setCutleryEnabled(bool value) async {
+    final response = await _client.patch(
+      '/restaurants/me',
+      <String, dynamic>{'cutleryEnabled': value},
+    );
+
+    if (response is Map) {
+      return RestaurantProfileData.fromJson(
+        Map<String, dynamic>.from(response),
+      );
+    }
 
     return getMyRestaurant();
   }

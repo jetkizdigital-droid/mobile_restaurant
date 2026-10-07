@@ -21,6 +21,45 @@ void main() {
   });
 
 
+  test('cutlery switch works outside profile edit mode', () {
+    final source = File(
+      'lib/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart',
+    ).readAsStringSync();
+
+    expect(source, contains('onChanged: savingToggle ? null : onEnabledChanged'));
+    expect(source, isNot(contains('onChanged: editing ? onEnabledChanged : null')));
+    expect(source, contains('onEnabledChanged: _toggleCutleryEnabled'));
+  });
+
+  test('successful profile save is not turned into an error by a follow-up reload', () {
+    final source = File(
+      'lib/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart',
+    ).readAsStringSync();
+
+    final saveStart = source.indexOf('Future<void> _saveProfile');
+    final saveEnd = source.indexOf(
+      'Future<void> _toggleCutleryEnabled',
+      saveStart,
+    );
+    final saveBlock = source.substring(saveStart, saveEnd);
+
+    expect(saveBlock, contains('_restaurantApi.updateMe('));
+    expect(saveBlock, isNot(contains('await _reloadProfile()')));
+  });
+
+  test('restaurant API uses the PATCH response as the save result', () {
+    final source = File(
+      'lib/features/restaurant/data/restaurant_api.dart',
+    ).readAsStringSync();
+
+    expect(source, contains('final response = await _client.patch('));
+    expect(source, contains('Future<RestaurantProfileData> setCutleryEnabled'));
+    expect(
+      source,
+      contains("'/restaurants/me',\n      <String, dynamic>{'cutleryEnabled': value}"),
+    );
+  });
+
   test('restaurant order list parses requested cutlery count', () {
     final order = RestaurantOrder.fromJson({
       'id': 'order-1',

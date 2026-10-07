@@ -41,6 +41,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
 
   bool _isEditing = false;
   bool _isSaving = false;
+  bool _isSavingCutleryToggle = false;
   bool _isUploadingPhoto = false;
   bool _isLoadingBranches = false;
 
@@ -470,8 +471,7 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
         _isEditing = false;
         _profileFuture = Future<RestaurantProfileData>.value(updated);
       });
-      await _reloadProfile();
-      if (mounted) _showSnackBar(_t('Профиль сохранён', 'Профиль сақталды'));
+      _showSnackBar(_t('Профиль сохранён', 'Профиль сақталды'));
     } catch (error) {
       if (!mounted) return;
       _showSnackBar(
@@ -483,6 +483,45 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _toggleCutleryEnabled(bool value) async {
+    if (_isSavingCutleryToggle) return;
+
+    final previous = _cutleryEnabled;
+    setState(() {
+      _cutleryEnabled = value;
+      _isSavingCutleryToggle = true;
+    });
+
+    try {
+      final updated = await _restaurantApi.setCutleryEnabled(value);
+      if (!mounted) return;
+
+      setState(() {
+        _cutleryEnabled = updated.cutleryEnabled;
+        _profileFuture = Future<RestaurantProfileData>.value(updated);
+        _lastProfileSyncKey = null;
+      });
+
+      _showSnackBar(
+        updated.cutleryEnabled
+            ? _t('Приборы включены', 'Құралдар қосылды')
+            : _t('Приборы выключены', 'Құралдар өшірілді'),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _cutleryEnabled = previous);
+      _showSnackBar(
+        _safeError(
+          error,
+          'Не удалось изменить настройку приборов. Попробуйте ещё раз.',
+          'Құралдар параметрін өзгерту мүмкін болмады. Қайта көріңіз.',
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingCutleryToggle = false);
     }
   }
 
@@ -751,9 +790,8 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
             unitPriceController: _cutleryUnitPriceController,
             maxCountController: _cutleryMaxCountController,
             editing: _isEditing && !_isSaving,
-            onEnabledChanged: (value) {
-              setState(() => _cutleryEnabled = value);
-            },
+            savingToggle: _isSavingCutleryToggle,
+            onEnabledChanged: _toggleCutleryEnabled,
           ),
           const SizedBox(height: 12),
           _StatusCard(status: profile.status),
@@ -817,6 +855,7 @@ class _CutlerySettingsCard extends StatelessWidget {
     required this.unitPriceController,
     required this.maxCountController,
     required this.editing,
+    required this.savingToggle,
     required this.onEnabledChanged,
   });
 
@@ -825,6 +864,7 @@ class _CutlerySettingsCard extends StatelessWidget {
   final TextEditingController unitPriceController;
   final TextEditingController maxCountController;
   final bool editing;
+  final bool savingToggle;
   final ValueChanged<bool> onEnabledChanged;
 
   @override
@@ -868,7 +908,7 @@ class _CutlerySettingsCard extends StatelessWidget {
               ),
               Switch(
                 value: enabled,
-                onChanged: editing ? onEnabledChanged : null,
+                onChanged: savingToggle ? null : onEnabledChanged,
               ),
             ],
           ),
