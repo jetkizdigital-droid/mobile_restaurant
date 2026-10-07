@@ -62,6 +62,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   RestaurantAppBootstrap? _cms;
   List<_StaffBranch> _branches = const [];
   String? _selectedRestaurantId;
+  int _restaurantLoadGeneration = 0;
 
   bool get _isOwner => _role == _owner;
   bool get _isManager => _role == _owner || _role == _manager;
@@ -115,6 +116,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
   }
 
   Future<void> _loadRestaurant() async {
+    final generation = ++_restaurantLoadGeneration;
     Map<String, dynamic>? me;
     try {
       me = await AuthApi().getMe();
@@ -124,7 +126,6 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
 
     try {
       final restaurant = await RestaurantApi(ApiClient.instance).getMyRestaurant();
-      RestaurantSession.restaurant = restaurant;
 
       var nextRole = _role;
       var nextBranches = _branches;
@@ -144,7 +145,8 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
         bootstrap = RestaurantAppCmsSession.instance.state.value;
       }
 
-      if (!mounted) return;
+      if (!mounted || generation != _restaurantLoadGeneration) return;
+      RestaurantSession.restaurant = restaurant;
       setState(() {
         _profile = restaurant;
         _cms = bootstrap;
@@ -225,6 +227,7 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
     if (nextId.isEmpty || _selectedRestaurantId == nextId) return;
 
     final previousId = _selectedRestaurantId;
+    _restaurantLoadGeneration++;
     try {
       await ApiClient.instance.setSelectedRestaurantId(nextId);
       if (!mounted) return;
@@ -246,6 +249,8 @@ class _RestaurantShellPageState extends State<RestaurantShellPage>
       }
       if (mounted) {
         setState(() => _selectedRestaurantId = previousId);
+        await _loadRestaurant();
+        if (!mounted) return;
         _message(_t(
           'Не удалось сменить филиал. Попробуйте ещё раз.',
           'Филиалды ауыстыру мүмкін болмады. Қайта көріңіз.',
