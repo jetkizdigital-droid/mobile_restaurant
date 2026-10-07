@@ -30,6 +30,10 @@ class RestaurantApi {
     required String address,
     required String phone,
     required String workingHours,
+    bool? cutleryEnabled,
+    int? cutleryFreeLimit,
+    int? cutleryUnitPrice,
+    int? cutleryMaxCount,
   }) async {
     await _client.patch(
       '/restaurants/me',
@@ -37,25 +41,10 @@ class RestaurantApi {
         'address': address,
         'phone': phone,
         'workingHours': workingHours,
-      },
-    );
-
-    return getMyRestaurant();
-  }
-
-  Future<RestaurantProfileData> updateCutlerySettings({
-    required bool enabled,
-    required int freeLimit,
-    required int unitPrice,
-    required int maxCount,
-  }) async {
-    await _client.patch(
-      '/restaurants/me',
-      {
-        'cutleryEnabled': enabled,
-        'cutleryFreeLimit': freeLimit,
-        'cutleryUnitPrice': unitPrice,
-        'cutleryMaxCount': maxCount,
+        if (cutleryEnabled != null) 'cutleryEnabled': cutleryEnabled,
+        if (cutleryFreeLimit != null) 'cutleryFreeLimit': cutleryFreeLimit,
+        if (cutleryUnitPrice != null) 'cutleryUnitPrice': cutleryUnitPrice,
+        if (cutleryMaxCount != null) 'cutleryMaxCount': cutleryMaxCount,
       },
     );
 

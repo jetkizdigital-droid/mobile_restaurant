@@ -455,16 +455,14 @@ class _RestaurantProfilePageState extends State<RestaurantProfilePage> {
 
     setState(() => _isSaving = true);
     try {
-      await _restaurantApi.updateMe(
+      final updated = await _restaurantApi.updateMe(
         address: address,
         phone: phone,
         workingHours: workingHours,
-      );
-      final updated = await _restaurantApi.updateCutlerySettings(
-        enabled: _cutleryEnabled,
-        freeLimit: cutleryFreeLimit,
-        unitPrice: cutleryUnitPrice,
-        maxCount: cutleryMaxCount,
+        cutleryEnabled: _cutleryEnabled,
+        cutleryFreeLimit: cutleryFreeLimit,
+        cutleryUnitPrice: cutleryUnitPrice,
+        cutleryMaxCount: cutleryMaxCount,
       );
       _syncControllers(updated);
       if (!mounted) return;

@@ -1,9 +1,26 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jetkiz_restaurant/features/orders/domain/restaurant_order.dart';
 import 'package:jetkiz_restaurant/features/orders/domain/restaurant_order_details.dart';
 import 'package:jetkiz_restaurant/features/restaurant/domain/restaurant_profile_data.dart';
 
 void main() {
+  test('profile saves cutlery settings in the same restaurant PATCH', () {
+    final source = File(
+      'lib/features/restaurant_profile/presentation/pages/restaurant_profile_page.dart',
+    ).readAsStringSync();
+
+    final saveStart = source.indexOf('Future<void> _saveProfile');
+    final saveEnd = source.indexOf('Future<File> _prepareUploadFile', saveStart);
+    final saveBlock = source.substring(saveStart, saveEnd);
+
+    expect(saveBlock, contains('_restaurantApi.updateMe('));
+    expect(saveBlock, contains('cutleryEnabled: _cutleryEnabled'));
+    expect(saveBlock, isNot(contains('updateCutlerySettings')));
+  });
+
+
   test('restaurant order list parses requested cutlery count', () {
     final order = RestaurantOrder.fromJson({
       'id': 'order-1',
