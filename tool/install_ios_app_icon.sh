@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SOURCE="assets/branding/ios_app_icon.png"
+SOURCE="ios_app_icon.png"
 ICONSET="ios/Runner/Assets.xcassets/AppIcon.appiconset"
 if [[ ! -f "$SOURCE" ]]; then
   echo "::error::Missing $SOURCE. Upload the approved 1024x1024 opaque JETKIZ app icon before releasing."
@@ -16,7 +16,7 @@ python3 - <<'PY'
 import json, pathlib, subprocess
 folder=pathlib.Path("ios/Runner/Assets.xcassets/AppIcon.appiconset")
 data=json.loads((folder/"Contents.json").read_text())
-src="assets/branding/ios_app_icon.png"
+src="ios_app_icon.png"
 for item in data["images"]:
     name=item.get("filename")
     if not name:
