@@ -114,7 +114,7 @@ jobs:
       - name: Build signed IPA
         run: |
           flutter pub get
-          flutter build ipa --release --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"
+          flutter build ipa --release --build-number="$((100000 + GITHUB_RUN_NUMBER))" --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Upload IPA to TestFlight
         env:
