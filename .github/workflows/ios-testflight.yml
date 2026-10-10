@@ -68,7 +68,7 @@ jobs:
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/ios-signing/profile.plist")
           PROFILE_TEAM=$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/ios-signing/profile.plist")
           PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print Entitlements:application-identifier' "$RUNNER_TEMP/ios-signing/profile.plist")
-          BUNDLE_ID=$(sed -nE 's/.*PRODUCT_BUNDLE_IDENTIFIER = (asia\\.jetkiz\\.(courier|restaurant));/\\1/p' ios/Runner.xcodeproj/project.pbxproj | head -1)
+          BUNDLE_ID="asia.jetkiz.restaurant"
           [[ -n "$BUNDLE_ID" && "$PROFILE_TEAM" == "$TEAM" && "$PROFILE_APP_ID" == "$TEAM.$BUNDLE_ID" ]] || { echo 'Provisioning profile does not match Team ID / Bundle ID'; exit 1; }
           cp "$RUNNER_TEMP/ios-signing/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
@@ -78,7 +78,9 @@ jobs:
           import os, pathlib
           path = pathlib.Path('ios/Runner.xcodeproj/project.pbxproj')
           content = path.read_text()
+          content = content.replace('"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";', '"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";')
           content = content.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
+          content = content.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;\\n\\t\\t\\t\\tCODE_SIGN_IDENTITY = "Apple Distribution";')
           bundle_id = os.environ['BUNDLE_ID']
           content = content.replace('PRODUCT_BUNDLE_IDENTIFIER = ' + bundle_id + ';', 'PRODUCT_BUNDLE_IDENTIFIER = ' + bundle_id + ';\n\t\t\t\tDEVELOPMENT_TEAM = ' + os.environ['TEAM'] + ';\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "' + os.environ['PROFILE_NAME'] + '";')
           path.write_text(content)
