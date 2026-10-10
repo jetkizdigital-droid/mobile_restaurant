@@ -108,6 +108,9 @@ jobs:
           </dict></plist>
           EOF
 
+      - name: Install JETKIZ iOS app icon
+        run: bash tool/install_ios_app_icon.sh
+
       - name: Build signed IPA
         run: |
           flutter pub get

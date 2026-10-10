@@ -24,6 +24,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Install JETKIZ iOS app icon
+        run: bash tool/install_ios_app_icon.sh
+
       - name: Flutter dependencies
         run: flutter pub get
 
