@@ -19,6 +19,13 @@ jobs:
         with:
           xcode-version: '26.3'
 
+      - name: Verify Xcode SDK before building
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          SDK_MAJOR=$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)
+          test "$SDK_MAJOR" -ge 26 || { echo "iOS 26 SDK required"; exit 1; }
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -80,7 +87,7 @@ jobs:
           content = path.read_text()
           content = content.replace('"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";', '"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";')
           content = content.replace('CODE_SIGN_STYLE = Automatic;', 'CODE_SIGN_STYLE = Manual;')
-          content = content.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;\\n\\t\\t\\t\\tCODE_SIGN_IDENTITY = "Apple Distribution";')
+          content = content.replace('CODE_SIGN_STYLE = Manual;', 'CODE_SIGN_STYLE = Manual;\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";')
           bundle_id = os.environ['BUNDLE_ID']
           content = content.replace('PRODUCT_BUNDLE_IDENTIFIER = ' + bundle_id + ';', 'PRODUCT_BUNDLE_IDENTIFIER = ' + bundle_id + ';\n\t\t\t\tDEVELOPMENT_TEAM = ' + os.environ['TEAM'] + ';\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "' + os.environ['PROFILE_NAME'] + '";')
           path.write_text(content)
