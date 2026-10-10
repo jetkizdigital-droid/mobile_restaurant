@@ -68,6 +68,7 @@ jobs:
           cp "$RUNNER_TEMP/ios-signing/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+          export PROFILE_NAME BUNDLE_ID
           python3 - <<'PY'
           import os, pathlib
           path = pathlib.Path('ios/Runner.xcodeproj/project.pbxproj')
